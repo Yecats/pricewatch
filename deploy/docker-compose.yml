@@ -1,0 +1,52 @@
+# docker-compose.yml — Pricewatch + PostgreSQL
+#
+# Usage:
+#   1. cp .env.example .env  (then edit DATABASE_PASSWORD)
+#   2. docker compose up -d
+#   3. docker compose exec app bunx prisma db push   (first time only)
+#
+# The app runs on http://localhost:3000 (or your server's LAN IP)
+# Postgres data persists in the named volume `pgdata`.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pricewatch
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-change_me_in_env}
+      POSTGRES_DB: pricewatch
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Don't expose 5432 to the host unless you need to connect from outside.
+    # Internal Docker network access is enough for the app.
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pricewatch -d pricewatch"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Use the internal Docker DNS name `db` to reach Postgres
+      DATABASE_URL: postgresql://pricewatch:${DATABASE_PASSWORD:-change_me_in_env}@db:5432/pricewatch?schema=public
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+    ports:
+      # Bind to all interfaces so your phone on the same Wi-Fi can reach it
+      # For Tailscale-only access, change "3000:3000" to "100.64.0.1:3000:3000"
+      # using your server's Tailscale IP.
+      - "3000:3000"
+
+volumes:
+  pgdata:

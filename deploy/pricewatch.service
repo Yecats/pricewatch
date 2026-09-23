@@ -1,0 +1,34 @@
+# /etc/systemd/system/pricewatch.service
+#
+# Install:
+#   sudo cp deploy/pricewatch.service /etc/systemd/system/pricewatch.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now pricewatch
+#   sudo journalctl -u pricewatch -f   (to see logs)
+#
+# Restart on code change:
+#   cd /opt/pricewatch && git pull && bun install && bun run build && sudo systemctl restart pricewatch
+
+[Unit]
+Description=Pricewatch — local price tracker
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=pricewatch
+Group=pricewatch
+WorkingDirectory=/opt/pricewatch
+EnvironmentFile=/opt/pricewatch/.env
+ExecStart=/usr/bin/bun /opt/pricewatch/.next/standalone/server.js
+Restart=on-failure
+RestartSec=5
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/pricewatch
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

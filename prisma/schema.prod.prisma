@@ -1,0 +1,86 @@
+// Production schema — PostgreSQL
+// This is a mirror of prisma/schema.prisma but with the provider swapped to postgresql.
+// Used when DATABASE_URL points to a Postgres instance.
+//
+// Why two schemas? Prisma requires the provider to be hardcoded at build time,
+// not derived from env. We keep schema.prisma (SQLite) for local dev and
+// schema.prod.prisma (Postgres) for production. The deploy script copies this
+// file to schema.prisma before running prisma generate/db:push on the server.
+//
+// See deploy/swap-schema.sh
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Store {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#8b5cf6")
+  location  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  prices PriceEntry[]
+}
+
+model Product {
+  id        String   @id @default(cuid())
+  name      String
+  category  String?
+  brand     String?
+  notes     String?
+  imageUrl  String?
+  barcode   String? // EAN/UPC code if scanned
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  prices        PriceEntry[]
+  shoppingItems ShoppingListItem[]
+
+  @@index([barcode])
+}
+
+model PriceEntry {
+  id            String    @id @default(cuid())
+  productId     String
+  storeId       String
+  price         Float
+  quantity      Float     @default(1) // e.g. 18 boxes
+  sizeValue     Float     @default(1) // e.g. 7.5
+  sizeUnit      String    @default("count") // oz, lb, g, kg, ml, L, fl_oz, gal, count, each
+  notes         String?
+  isSale        Boolean   @default(false)
+  saleExpiresAt DateTime?
+  barcode       String? // specific variant barcode (if different from product)
+  dateChecked   DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([storeId])
+  @@index([barcode])
+}
+
+model ShoppingListItem {
+  id        String   @id @default(cuid())
+  productId String
+  quantity  Float    @default(1)
+  notes     String?
+  purchased Boolean  @default(false)
+  addedAt   DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([purchased])
+}

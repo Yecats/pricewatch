@@ -1,0 +1,37 @@
+# Caddy reverse proxy config with HTTPS via Tailscale
+#
+# Prereqs:
+#   1. Install Tailscale on the server:  curl -fsSL https://tailscale.com/install.sh | sh
+#   2. Enable HTTPS in Tailscale admin:  https://login.tailscale.com/admin/dns
+#   3. Get your server's Tailscale hostname (e.g. pricewatch.tail-XXXX.ts.net)
+#   4. Request a cert:  sudo tailscale cert pricewatch.tail-XXXX.ts.net
+#      → this writes pricewatch.tail-XXXX.ts.net.crt and .key to the current dir
+#   5. Move certs to /etc/caddy/ or update the paths below
+#   6. Replace YOUR_TAILSCALE_HOST below with your actual hostname
+#
+# Then run:
+#   caddy run --config deploy/Caddyfile.https
+
+YOUR_TAILSCALE_HOST {
+	encode gzip
+
+	# Reverse proxy to the Next.js app (running on localhost:3000)
+	reverse_proxy localhost:3000 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	# Cache static assets aggressively
+	@static {
+		path /_next/static/*
+	}
+	header @static Cache-Control "public, max-age=31536000, immutable"
+
+	# Don't cache API responses
+	@api {
+		path /api/*
+	}
+	header@api Cache-Control "no-store"
+}

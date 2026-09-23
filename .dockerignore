@@ -1,0 +1,26 @@
+# Build artifacts
+.next
+node_modules
+download
+dev.log
+server.log
+
+# Dev files
+tests
+scripts/seed.ts
+
+# Deploy artifacts (don't ship these in the image)
+deploy
+
+# OS files
+.DS_Store
+*.log
+
+# Git
+.git
+.gitignore
+
+# Skills / examples not needed in production
+skills
+examples
+mini-services

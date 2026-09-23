@@ -1,0 +1,81 @@
+// Price tracker — local SQLite (dev) / PostgreSQL (prod)
+// See prisma/schema.prod.prisma for the production variant.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Store {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#8b5cf6")
+  location  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?  // soft delete for sync — null = active
+
+  prices PriceEntry[]
+}
+
+model Product {
+  id        String   @id @default(cuid())
+  name      String
+  category  String?
+  brand     String?
+  notes     String?
+  imageUrl  String?
+  barcode   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?  // soft delete for sync — null = active
+
+  prices        PriceEntry[]
+  shoppingItems ShoppingListItem[]
+
+  @@index([barcode])
+}
+
+model PriceEntry {
+  id           String   @id @default(cuid())
+  productId    String
+  storeId      String
+  price        Float
+  quantity     Float    @default(1)
+  sizeValue    Float    @default(1)
+  sizeUnit     String   @default("count")
+  notes        String?
+  isSale       Boolean  @default(false)
+  saleExpiresAt DateTime?
+  barcode      String?
+  dateChecked  DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?  // soft delete for sync — null = active
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([storeId])
+  @@index([barcode])
+}
+
+model ShoppingListItem {
+  id          String   @id @default(cuid())
+  productId   String
+  quantity    Float    @default(1)
+  notes       String?
+  purchased   Boolean  @default(false)
+  addedAt     DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?  // soft delete for sync — null = active
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([purchased])
+}

@@ -1,0 +1,22 @@
+{
+  "name": "Pricewatch",
+  "short_name": "Pricewatch",
+  "description": "Track product prices across local stores and find the best value, accounting for different sizes and pack counts.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf9fc",
+  "theme_color": "#8b5cf6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%238b5cf6'/%3E%3Cpath d='M48 30 L36 54 v108 a8 8 0 0 0 8 8 h104 a8 8 0 0 0 8-8 V54 L144 30 Z' fill='none' stroke='white' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cline x1='36' y1='54' x2='156' y2='54' stroke='white' stroke-width='6'/%3E%3Cpath d='M120 80 a24 24 0 0 1 -48 0' fill='none' stroke='white' stroke-width='6' stroke-linecap='round'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='80' fill='%238b5cf6'/%3E%3Cpath d='M128 80 L96 144 v288 a16 16 0 0 0 16 16 h288 a16 16 0 0 0 16-16 V144 L384 80 Z' fill='none' stroke='white' stroke-width='16' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cline x1='96' y1='144' x2='416' y2='144' stroke='white' stroke-width='16'/%3E%3Cpath d='M320 200 a64 64 0 0 1 -128 0' fill='none' stroke='white' stroke-width='16' stroke-linecap='round'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
