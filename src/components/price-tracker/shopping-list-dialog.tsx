@@ -36,11 +36,19 @@ import {
   formatSaleCountdown,
   saleCountdownSeverity,
   formatSize,
+  computePrice,
+  isSaleExpired,
 } from '@/lib/units'
 import {
   groupShoppingListByBestStore,
   type ShoppingListItemInput,
 } from '@/lib/shopping-list'
+import { localDb } from '@/lib/local-db'
+import {
+  localDeleteShoppingListItem,
+  localToggleShoppingListPurchased,
+  localUpdateShoppingListItem,
+} from '@/hooks/use-local-data'
 
 interface Props {
   open: boolean
@@ -77,13 +85,70 @@ export function ShoppingListDialog({ open, onOpenChange, onCountChange }: Props)
       const silent = opts?.silent ?? false
       if (!silent) setLoading(true)
       try {
-        const res = await fetch('/api/shopping-list')
-        if (!res.ok) throw new Error('Failed to load shopping list')
-        const data: ShoppingListItemInput[] = await res.json()
+        // Read from local IndexedDB instead of hitting the server API.
+        // This matches what the page.tsx header badge counts, so they
+        // can never get out of sync.
+        const [localItems, localProducts, localPrices, localStores] = await Promise.all([
+          localDb.shoppingListItems.toArray(),
+          localDb.products.toArray(),
+          localDb.priceEntries.toArray(),
+          localDb.stores.toArray(),
+        ])
+
+        const storeMap = new Map(localStores.filter((s) => !s.deletedAt).map((s) => [s.id, s]))
+        const productMap = new Map(localProducts.filter((p) => !p.deletedAt).map((p) => [p.id, p]))
+
+        const data: ShoppingListItemInput[] = localItems
+          .filter((i) => !i.deletedAt && !i.purchased)
+          .map((item) => {
+            const product = productMap.get(item.productId)
+            const productPrices = localPrices
+              .filter((p) => p.productId === item.productId && !p.deletedAt)
+              .filter((p) => !p.isSale || !isSaleExpired(p.saleExpiresAt))
+              .map((p) => {
+                const store = storeMap.get(p.storeId)
+                return {
+                  id: p.id,
+                  storeId: p.storeId,
+                  storeName: store?.name ?? 'Unknown',
+                  storeColor: store?.color ?? '#888',
+                  storeLocation: store?.location ?? null,
+                  price: p.price,
+                  quantity: p.quantity,
+                  sizeValue: p.sizeValue,
+                  sizeUnit: p.sizeUnit,
+                  notes: p.notes ?? null,
+                  isSale: p.isSale,
+                  saleExpiresAt: p.saleExpiresAt ?? null,
+                  isOnline: p.isOnline ?? false,
+                  barcode: p.barcode ?? null,
+                  dateChecked: p.dateChecked,
+                  ...computePrice(p),
+                }
+              })
+
+            return {
+              id: item.id,
+              productId: item.productId,
+              quantity: item.quantity,
+              notes: item.notes,
+              addedAt: item.addedAt,
+              purchased: item.purchased,
+              product: {
+                id: product?.id ?? item.productId,
+                name: product?.name ?? 'Unknown product',
+                brand: product?.brand ?? null,
+                category: product?.category ?? null,
+                imageUrl: product?.imageUrl ?? null,
+              },
+              prices: productPrices,
+            }
+          })
+          .sort((a, b) => new Date(b.addedAt).getTime() - new Date(a.addedAt).getTime())
+
         setItems(data)
-        // Pass the count up to the parent (header badge).
         try {
-          onCountChange(data.filter((i) => !i.purchased).length)
+          onCountChange(data.length)
         } catch {
           // ignore
         }
@@ -113,25 +178,16 @@ export function ShoppingListDialog({ open, onOpenChange, onCountChange }: Props)
 
   async function updateQuantity(item: ShoppingListItemInput, delta: number) {
     const newQty = Math.max(1, item.quantity + delta)
-    // Optimistic update — flip the quantity locally immediately so the UI
-    // feels instant. The server response will confirm (or revert) on the
-    // next silent refresh.
     setItems((prev) =>
       prev.map((i) => (i.id === item.id ? { ...i, quantity: newQty } : i))
     )
     setUpdatingId(item.id)
     try {
-      const res = await fetch(`/api/shopping-list/${item.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantity: newQty }),
-      })
-      if (!res.ok) throw new Error('Failed to update quantity')
+      await localUpdateShoppingListItem(item.id, { quantity: newQty })
       await refresh()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Something went wrong'
       toast({ variant: 'destructive', title: 'Error', description: msg })
-      // Revert by silent-refreshing from the server
       await refresh()
     } finally {
       setUpdatingId(null)
@@ -140,16 +196,11 @@ export function ShoppingListDialog({ open, onOpenChange, onCountChange }: Props)
 
   async function togglePurchased(item: ShoppingListItemInput) {
     const newPurchased = !item.purchased
-    // Optimistic update — flip the purchased flag locally immediately.
-    // The item will visually disappear from the list (since we filter
-    // purchased items out in the grouping) without any flicker.
     setItems((prev) =>
       prev.map((i) =>
         i.id === item.id ? { ...i, purchased: newPurchased } : i
       )
     )
-    // Also update the parent's count badge optimistically.
-    // newPurchased=true → one fewer unpurchased item; newPurchased=false → one more.
     try {
       onCountChange(
         items.filter((i) =>
@@ -161,17 +212,11 @@ export function ShoppingListDialog({ open, onOpenChange, onCountChange }: Props)
     }
     setUpdatingId(item.id)
     try {
-      const res = await fetch(`/api/shopping-list/${item.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ purchased: newPurchased }),
-      })
-      if (!res.ok) throw new Error('Failed to update item')
+      await localToggleShoppingListPurchased(item.id, newPurchased)
       await refresh()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Something went wrong'
       toast({ variant: 'destructive', title: 'Error', description: msg })
-      // Revert
       await refresh()
     } finally {
       setUpdatingId(null)
@@ -179,7 +224,6 @@ export function ShoppingListDialog({ open, onOpenChange, onCountChange }: Props)
   }
 
   async function removeItem(item: ShoppingListItemInput) {
-    // Optimistic update — remove the item from local state immediately
     setItems((prev) => prev.filter((i) => i.id !== item.id))
     try {
       onCountChange(
@@ -190,14 +234,12 @@ export function ShoppingListDialog({ open, onOpenChange, onCountChange }: Props)
     }
     setUpdatingId(item.id)
     try {
-      const res = await fetch(`/api/shopping-list/${item.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to remove item')
+      await localDeleteShoppingListItem(item.id)
       toast({ title: 'Removed from list', description: item.product.name })
       await refresh()
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Something went wrong'
       toast({ variant: 'destructive', title: 'Error', description: msg })
-      // Revert
       await refresh()
     } finally {
       setUpdatingId(null)
@@ -205,13 +247,12 @@ export function ShoppingListDialog({ open, onOpenChange, onCountChange }: Props)
   }
 
   async function clearPurchased() {
-    // Optimistic — remove all purchased items from local state immediately
     setItems((prev) => prev.filter((i) => !i.purchased))
     try {
-      const res = await fetch('/api/shopping-list/clear?mode=purchased', {
-        method: 'DELETE',
-      })
-      if (!res.ok) throw new Error('Failed to clear purchased items')
+      const purchased = items.filter((i) => i.purchased)
+      await Promise.all(
+        purchased.map((item) => localDeleteShoppingListItem(item.id))
+      )
       toast({ title: 'Purchased items cleared' })
       await refresh()
     } catch (e) {

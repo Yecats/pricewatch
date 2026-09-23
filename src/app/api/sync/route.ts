@@ -205,6 +205,7 @@ async function applyPriceEntryChange(record: SyncRecord, counts: { priceEntries:
     notes: record.notes ? String(record.notes) : null,
     isSale: Boolean(record.isSale),
     saleExpiresAt: record.saleExpiresAt ? new Date(record.saleExpiresAt) : null,
+    isOnline: Boolean(record.isOnline ?? false),
     barcode: record.barcode ? String(record.barcode) : null,
     dateChecked: record.dateChecked ? new Date(record.dateChecked) : new Date(),
     updatedAt: incomingUpdatedAt,
@@ -239,7 +240,7 @@ async function applyShoppingListItemChange(record: SyncRecord, counts: { shoppin
 
   await db.shoppingListItem.upsert({
     where: { id: record.id },
-    create: { id: record.id, ...data, createdAt: record.createdAt ? new Date(record.createdAt) : new Date() },
+    create: { id: record.id, ...data },
     update: data,
   })
   counts.shoppingListItems++

@@ -16,6 +16,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
       dateChecked,
       isSale,
       saleExpiresAt,
+      isOnline,
       barcode,
     } = body
 
@@ -59,6 +60,7 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
         notes: typeof notes === 'string' ? notes.trim() || null : undefined,
         isSale: saleFlag,
         saleExpiresAt: expiresAt,
+        isOnline: typeof isOnline === 'boolean' ? isOnline : undefined,
         barcode:
           typeof barcode === 'string'
             ? barcode.trim() || null

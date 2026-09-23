@@ -57,6 +57,7 @@ model PriceEntry {
   notes         String?
   isSale        Boolean   @default(false)
   saleExpiresAt DateTime?
+  isOnline      Boolean   @default(false)  // true = bought online (Amazon, manufacturer, etc.)
   barcode       String? // specific variant barcode (if different from product)
   dateChecked   DateTime  @default(now())
   createdAt     DateTime  @default(now())

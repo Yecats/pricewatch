@@ -76,6 +76,7 @@ export function useLocalProducts() {
               notes: pr.notes ?? null,
               isSale: pr.isSale,
               saleExpiresAt: pr.saleExpiresAt ?? null,
+              isOnline: pr.isOnline ?? false,
               barcode: pr.barcode ?? null,
               dateChecked: pr.dateChecked,
               createdAt: pr.createdAt,
@@ -189,6 +190,7 @@ export async function localAddPrice(productId: string, data: {
   notes?: string | null
   isSale?: boolean
   saleExpiresAt?: string | null
+  isOnline?: boolean
   barcode?: string | null
   dateChecked?: string
 }): Promise<string> {
@@ -205,6 +207,7 @@ export async function localAddPrice(productId: string, data: {
     notes: data.notes ?? null,
     isSale: data.isSale ?? false,
     saleExpiresAt: data.saleExpiresAt ?? null,
+    isOnline: data.isOnline ?? false,
     barcode: data.barcode ?? null,
     dateChecked: data.dateChecked ?? now,
     createdAt: now,
@@ -218,9 +221,62 @@ export async function localAddPrice(productId: string, data: {
   return id
 }
 
+export async function localUpdatePrice(id: string, data: Partial<LocalPriceEntry>): Promise<void> {
+  const now = new Date().toISOString()
+  await localDb.priceEntries.update(id, { ...data, updatedAt: now, _pendingSync: true })
+  await refreshPendingCount()
+  scheduleSync()
+}
+
 export async function localDeletePrice(id: string): Promise<void> {
   const now = new Date().toISOString()
   await localDb.priceEntries.update(id, { deletedAt: now, updatedAt: now, _pendingSync: true })
+  await refreshPendingCount()
+  scheduleSync()
+}
+
+// === Store mutations ===
+
+export async function localAddStore(data: {
+  name: string
+  color?: string
+  location?: string | null
+}): Promise<string> {
+  const id = generateId()
+  const now = new Date().toISOString()
+  const record: LocalStore = {
+    id,
+    name: data.name,
+    color: data.color ?? '#8b5cf6',
+    location: data.location ?? null,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+    _pendingSync: true,
+  }
+  await localDb.stores.add(record)
+  await refreshPendingCount()
+  scheduleSync()
+  return id
+}
+
+export async function localUpdateStore(id: string, data: Partial<LocalStore>): Promise<void> {
+  const now = new Date().toISOString()
+  await localDb.stores.update(id, { ...data, updatedAt: now, _pendingSync: true })
+  await refreshPendingCount()
+  scheduleSync()
+}
+
+export async function localDeleteStore(id: string): Promise<void> {
+  const now = new Date().toISOString()
+  await localDb.stores.update(id, { deletedAt: now, updatedAt: now, _pendingSync: true })
+  await refreshPendingCount()
+  scheduleSync()
+}
+
+export async function localUpdateShoppingListItem(id: string, data: Partial<LocalShoppingListItem>): Promise<void> {
+  const now = new Date().toISOString()
+  await localDb.shoppingListItems.update(id, { ...data, updatedAt: now, _pendingSync: true })
   await refreshPendingCount()
   scheduleSync()
 }

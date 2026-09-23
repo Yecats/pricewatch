@@ -23,6 +23,7 @@ export interface ComputedPrice {
   notes?: string | null
   isSale: boolean
   saleExpiresAt?: string | null
+  isOnline?: boolean
   barcode?: string | null
   dateChecked: string
   createdAt?: string

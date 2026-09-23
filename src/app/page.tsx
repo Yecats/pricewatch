@@ -48,6 +48,7 @@ import {
   localAddProduct,
   localDeleteProduct,
   localAddToShoppingList,
+  localDeleteShoppingListItem,
 } from '@/hooks/use-local-data'
 
 export default function Home() {
@@ -229,7 +230,6 @@ export default function Home() {
   }, [products, stores])
 
   async function deleteProduct(p: Product) {
-    if (!confirm(`Delete "${p.name}"? This removes all its price entries.`)) return
     try {
       await localDeleteProduct(p.id)
       toast({ title: 'Product removed', description: p.name })
@@ -246,15 +246,36 @@ export default function Home() {
 
   async function addToShoppingList(productId: string) {
     try {
-      await localAddToShoppingList(productId, 1)
-      setOnListIds((prev) => new Set(prev).add(productId))
-      setShoppingListCount((c) => c + 1)
-      toast({
-        title: 'Added to shopping list',
-        description: syncState.status === 'offline'
-          ? 'Saved locally — will sync when online'
-          : 'Find the best store in the shopping list view',
-      })
+      // If already on list → remove. Otherwise → add.
+      if (onListIds.has(productId)) {
+        const items = await localDb.shoppingListItems
+          .where('productId')
+          .equals(productId)
+          .toArray()
+        const activeItem = items.find((i) => !i.deletedAt && !i.purchased)
+        if (activeItem) {
+          await localDeleteShoppingListItem(activeItem.id)
+        }
+        setOnListIds((prev) => {
+          const next = new Set(prev)
+          next.delete(productId)
+          return next
+        })
+        setShoppingListCount((c) => Math.max(0, c - 1))
+        toast({
+          title: 'Removed from shopping list',
+        })
+      } else {
+        await localAddToShoppingList(productId, 1)
+        setOnListIds((prev) => new Set(prev).add(productId))
+        setShoppingListCount((c) => c + 1)
+        toast({
+          title: 'Added to shopping list',
+          description: syncState.status === 'offline'
+            ? 'Saved locally — will sync when online'
+            : 'Find the best store in the shopping list view',
+        })
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Something went wrong'
       toast({ variant: 'destructive', title: 'Error', description: msg })
@@ -286,11 +307,43 @@ export default function Home() {
     setProductFormOpen(true)
   }
 
-  // Handle product form save (writes to local DB, triggers sync)
+  // Handle product form save — after creating a new product, immediately
+  // open the detail dialog so the user can add their first price entry.
   async function handleProductSaved(savedProduct: { id: string; name: string }) {
     await reloadProducts()
-    // Update the shopping list IDs in case the product was added to the list
     await loadShoppingListIds()
+
+    // If this was a NEW product (not an edit), close the product form and
+    // open the detail dialog so the user can add their first price variant.
+    if (!editingProduct) {
+      setProductFormOpen(false)
+      try {
+        const localProduct = await localDb.products.get(savedProduct.id)
+        if (localProduct) {
+          // Build a minimal Product object for the detail dialog
+          const freshProduct: Product = {
+            id: localProduct.id,
+            name: localProduct.name,
+            brand: localProduct.brand,
+            category: localProduct.category,
+            notes: localProduct.notes,
+            imageUrl: localProduct.imageUrl,
+            barcode: localProduct.barcode,
+            createdAt: localProduct.createdAt,
+            updatedAt: localProduct.updatedAt,
+            prices: [],
+            byCategory: {},
+            bestPerCategory: {},
+            lowestPricePerUnit: null,
+            storeCount: 0,
+            priceCount: 0,
+          }
+          setSelectedProduct(freshProduct)
+        }
+      } catch (err) {
+        console.error('Failed to open detail after save:', err)
+      }
+    }
   }
 
   return (

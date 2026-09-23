@@ -159,7 +159,14 @@ export function ProductCard({
               className="h-7 w-7"
               onClick={handleAddToList}
               disabled={adding}
-              aria-label={`Add ${product.name} to shopping list`}
+              aria-label={
+                isOnList
+                  ? `Remove ${product.name} from shopping list`
+                  : `Add ${product.name} to shopping list`
+              }
+              title={
+                isOnList ? 'Remove from shopping list' : 'Add to shopping list'
+              }
             >
               {adding ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

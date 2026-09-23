@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
       notes: pr.notes,
       isSale: pr.isSale === true,
       saleExpiresAt: pr.saleExpiresAt ?? null,
+      isOnline: pr.isOnline === true,
       barcode: pr.barcode ?? null,
       dateChecked: pr.dateChecked,
       createdAt: pr.createdAt,

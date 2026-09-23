@@ -188,6 +188,7 @@ export async function sync(): Promise<void> {
           notes: p.notes,
           isSale: p.isSale,
           saleExpiresAt: p.saleExpiresAt,
+          isOnline: p.isOnline ?? false,
           barcode: p.barcode,
           dateChecked: p.dateChecked,
           createdAt: p.createdAt,

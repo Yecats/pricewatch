@@ -81,16 +81,19 @@ export function StoresDialog({ open, onOpenChange, stores, onChange }: Props) {
   async function onSubmit(values: FormValues) {
     setSubmitting(true)
     try {
-      const url = editing ? `/api/stores/${editing.id}` : '/api/stores'
-      const method = editing ? 'PUT' : 'POST'
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error ?? 'Failed to save store')
+      const { localAddStore, localUpdateStore } = await import('@/hooks/use-local-data')
+      if (editing) {
+        await localUpdateStore(editing.id, {
+          name: values.name,
+          color: values.color,
+          location: values.location || null,
+        })
+      } else {
+        await localAddStore({
+          name: values.name,
+          color: values.color,
+          location: values.location || null,
+        })
       }
       toast({
         title: editing ? 'Store updated' : 'Store added',
@@ -108,11 +111,10 @@ export function StoresDialog({ open, onOpenChange, stores, onChange }: Props) {
   }
 
   async function onDelete(s: Store) {
-    if (!confirm(`Delete "${s.name}"? This also removes its price entries.`)) return
     setDeletingId(s.id)
     try {
-      const res = await fetch(`/api/stores/${s.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete store')
+      const { localDeleteStore } = await import('@/hooks/use-local-data')
+      await localDeleteStore(s.id)
       toast({ title: 'Store removed', description: s.name })
       onChange()
     } catch (e: unknown) {

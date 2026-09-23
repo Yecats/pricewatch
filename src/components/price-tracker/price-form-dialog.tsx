@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Loader2, Info, Tag, CalendarClock, ScanLine } from 'lucide-react'
+import { Loader2, Info, Tag, CalendarClock, ScanLine, Globe } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -65,6 +65,7 @@ const schema = z.object({
   dateChecked: z.string().optional().or(z.literal('')),
   isSale: z.boolean().default(false),
   saleExpiresAt: z.string().optional().or(z.literal('')),
+  isOnline: z.boolean().default(false),
   // Optional — variant barcode (different size / packaging of the same product)
   barcode: z.string().max(40).optional().or(z.literal('')),
 })
@@ -145,6 +146,7 @@ export function PriceFormDialog({
       dateChecked: today,
       isSale: false,
       saleExpiresAt: tomorrowDateInput(),
+      isOnline: false,
       barcode: '',
     },
   })
@@ -169,6 +171,7 @@ export function PriceFormDialog({
         saleExpiresAt: initial?.saleExpiresAt
           ? new Date(initial.saleExpiresAt).toISOString().slice(0, 10)
           : tomorrowDateInput(),
+        isOnline: initial?.isOnline ?? false,
         barcode: '',
       })
     }
@@ -210,29 +213,41 @@ export function PriceFormDialog({
   async function onSubmit(values: FormValues) {
     setSubmitting(true)
     try {
-      const url = isEdit ? `/api/prices/${initial!.id}` : `/api/products/${product.id}/prices`
-      const method = isEdit ? 'PUT' : 'POST'
-      const payload: Record<string, unknown> = {
-        ...values,
-        dateChecked: values.dateChecked || new Date().toISOString(),
-        // Only send barcode if it was scanned/entered
-        barcode: values.barcode?.trim() || null,
-      }
-      // If sale is unchecked, clear the expiration date too.
-      if (!values.isSale) {
-        payload.saleExpiresAt = null
-      } else if (!values.saleExpiresAt) {
-        // Default to tomorrow if user enabled sale but left date blank
-        payload.saleExpiresAt = tomorrowDateInput()
-      }
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error ?? 'Failed to save price')
+      const { localAddPrice, localUpdatePrice } = await import('@/hooks/use-local-data')
+      const saleExpiresAt = !values.isSale
+        ? null
+        : values.saleExpiresAt
+        ? new Date(values.saleExpiresAt).toISOString()
+        : new Date(new Date().setDate(new Date().getDate() + 1)).toISOString()
+
+      if (isEdit && initial) {
+        await localUpdatePrice(initial.id, {
+          storeId: values.storeId,
+          price: values.price,
+          quantity: values.quantity,
+          sizeValue: values.sizeValue,
+          sizeUnit: values.sizeUnit,
+          notes: values.notes || null,
+          isSale: values.isSale,
+          saleExpiresAt,
+          isOnline: values.isOnline,
+          barcode: values.barcode?.trim() || null,
+          dateChecked: values.dateChecked || new Date().toISOString(),
+        })
+      } else {
+        await localAddPrice(product.id, {
+          storeId: values.storeId,
+          price: values.price,
+          quantity: values.quantity,
+          sizeValue: values.sizeValue,
+          sizeUnit: values.sizeUnit,
+          notes: values.notes || null,
+          isSale: values.isSale,
+          saleExpiresAt,
+          isOnline: values.isOnline,
+          barcode: values.barcode?.trim() || null,
+          dateChecked: values.dateChecked || new Date().toISOString(),
+        })
       }
       toast({
         title: isEdit ? 'Price updated' : 'Price added',
@@ -461,7 +476,7 @@ export function PriceFormDialog({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <FormField
                 control={form.control}
                 name="dateChecked"
@@ -499,6 +514,37 @@ export function PriceFormDialog({
                         <Tag className={`h-3.5 w-3.5 ${field.value ? 'text-primary' : 'text-muted-foreground'}`} />
                         <span className="text-sm font-medium">
                           {field.value ? 'On sale' : 'Regular price'}
+                        </span>
+                      </label>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Online purchase toggle */}
+              <FormField
+                control={form.control}
+                name="isOnline"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Source</FormLabel>
+                    <FormControl>
+                      <label
+                        className={`flex items-center gap-2 h-9 rounded-md border px-3 cursor-pointer transition-colors ${
+                          field.value
+                            ? 'border-sky-400/60 bg-sky-50 dark:bg-sky-950/30'
+                            : 'border-input hover:bg-accent'
+                        }`}
+                      >
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          aria-label="Mark as online purchase"
+                        />
+                        <Globe className={`h-3.5 w-3.5 ${field.value ? 'text-sky-600 dark:text-sky-400' : 'text-muted-foreground'}`} />
+                        <span className="text-sm font-medium">
+                          {field.value ? 'Online' : 'In-store'}
                         </span>
                       </label>
                     </FormControl>

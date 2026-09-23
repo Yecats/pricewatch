@@ -35,6 +35,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     notes: pr.notes,
     isSale: pr.isSale === true,
     saleExpiresAt: pr.saleExpiresAt ?? null,
+    isOnline: pr.isOnline === true,
     barcode: pr.barcode ?? null,
     dateChecked: pr.dateChecked,
     createdAt: pr.createdAt,

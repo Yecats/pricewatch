@@ -16,6 +16,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       dateChecked,
       isSale,
       saleExpiresAt,
+      isOnline,
       barcode,
     } = body
 
@@ -75,6 +76,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         notes: typeof notes === 'string' ? notes.trim() || null : null,
         isSale: saleFlag,
         saleExpiresAt: expiresAt,
+        isOnline: Boolean(isOnline ?? false),
         barcode:
           typeof barcode === 'string' && barcode.trim() ? barcode.trim() : null,
         dateChecked: dateChecked ? new Date(dateChecked) : new Date(),

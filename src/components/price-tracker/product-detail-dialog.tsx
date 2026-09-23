@@ -108,11 +108,12 @@ export function ProductDetailDialog({
   if (!product) return null
 
   async function deletePrice(p: ComputedPrice) {
-    if (!confirm(`Delete price from ${p.storeName}?`)) return
     setDeletingId(p.id)
     try {
-      const res = await fetch(`/api/prices/${p.id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete')
+      // Use local DB delete (writes to IndexedDB + schedules sync).
+      // The local delete + onPricesChanged() will update the UI instantly.
+      const { localDeletePrice } = await import('@/hooks/use-local-data')
+      await localDeletePrice(p.id)
       toast({ title: 'Price removed', description: `${product?.name} — ${p.storeName}` })
       onPricesChanged()
     } catch (e: unknown) {
@@ -177,7 +178,7 @@ export function ProductDetailDialog({
                   ) : (
                     <ShoppingCart className="mr-1 h-3.5 w-3.5" />
                   )}
-                  {isOnList ? 'On list' : 'Add to list'}
+                  {isOnList ? 'On list (click to remove)' : 'Add to list'}
                 </Button>
               )}
               <Button
