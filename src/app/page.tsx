@@ -30,6 +30,7 @@ import { ProductCard } from '@/components/price-tracker/product-card'
 import { ProductDetailDialog } from '@/components/price-tracker/product-detail-dialog'
 import { ThemeToggle } from '@/components/price-tracker/theme-toggle'
 import { BarcodeScannerDialog } from '@/components/price-tracker/barcode-scanner-dialog'
+import { VariantPickerDialog } from '@/components/price-tracker/variant-picker-dialog'
 import { ShoppingListDialog } from '@/components/price-tracker/shopping-list-dialog'
 import { SyncStatusIndicator } from '@/components/price-tracker/sync-status-indicator'
 import type { ComputedPrice, Product } from '@/components/price-tracker/types'
@@ -65,6 +66,8 @@ export default function Home() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [globalScannerOpen, setGlobalScannerOpen] = useState(false)
   const [pendingLookup, setPendingLookup] = useState<BarcodeLookupResult | null>(null)
+  const [variantPickerOpen, setVariantPickerOpen] = useState(false)
+  const [variantMatches, setVariantMatches] = useState<Array<{ id: string; name: string; brand?: string | null; category?: string | null; priceCount: number }>>([])
   const [shoppingListOpen, setShoppingListOpen] = useState(false)
   const [shoppingListCount, setShoppingListCount] = useState(0)
   const [onListIds, setOnListIds] = useState<Set<string>>(new Set())
@@ -249,6 +252,80 @@ export default function Home() {
     setSelectedProduct(p)
   }
 
+  /** Reusable: open the detail dialog for a product by reading from local DB.
+   *  Used by the variant picker and the scan-by-name search. */
+  async function openProductById(productId: string) {
+    const localProduct = await localDb.products.get(productId)
+    if (!localProduct) return
+
+    const { computePrice, isSaleExpired } = await import('@/lib/units')
+    const [localPrices, localStores] = await Promise.all([
+      localDb.priceEntries.where('productId').equals(productId).toArray(),
+      localDb.stores.toArray(),
+    ])
+    const storeMap = new Map(localStores.filter((s) => !s.deletedAt).map((s) => [s.id, s]))
+    const visiblePrices = localPrices
+      .filter((p) => !p.deletedAt)
+      .filter((p) => !p.isSale || !isSaleExpired(p.saleExpiresAt))
+
+    const prices = visiblePrices.map((p) => {
+      const store = storeMap.get(p.storeId)
+      return {
+        id: p.id,
+        storeId: p.storeId,
+        storeName: store?.name ?? 'Unknown',
+        storeColor: store?.color ?? '#888',
+        storeLocation: store?.location ?? null,
+        price: p.price,
+        quantity: p.quantity,
+        sizeValue: p.sizeValue,
+        sizeUnit: p.sizeUnit,
+        notes: p.notes ?? null,
+        isSale: p.isSale,
+        saleExpiresAt: p.saleExpiresAt ?? null,
+        isOnline: p.isOnline ?? false,
+        barcode: p.barcode ?? null,
+        dateChecked: p.dateChecked,
+        createdAt: p.createdAt,
+        ...computePrice(p),
+      }
+    })
+
+    const byCategory: Record<string, typeof prices> = {}
+    for (const c of prices) {
+      if (!byCategory[c.category]) byCategory[c.category] = []
+      byCategory[c.category].push(c)
+    }
+    for (const k of Object.keys(byCategory)) {
+      byCategory[k].sort((a, b) => a.pricePerBaseUnit - b.pricePerBaseUnit)
+    }
+    const bestPerCategory: Record<string, typeof prices[0] | undefined> = {}
+    for (const [cat, entries] of Object.entries(byCategory)) {
+      bestPerCategory[cat] = entries[0]
+    }
+    const allPrices = prices.map((c) => c.pricePerBaseUnit)
+    const lowestPricePerUnit = allPrices.length ? Math.min(...allPrices) : null
+    const storeCount = new Set(prices.map((pr) => pr.storeId)).size
+
+    setSelectedProduct({
+      id: localProduct.id,
+      name: localProduct.name,
+      brand: localProduct.brand,
+      category: localProduct.category,
+      notes: localProduct.notes,
+      imageUrl: localProduct.imageUrl,
+      barcode: localProduct.barcode,
+      createdAt: localProduct.createdAt,
+      updatedAt: localProduct.updatedAt,
+      prices,
+      byCategory,
+      bestPerCategory,
+      lowestPricePerUnit,
+      storeCount,
+      priceCount: prices.length,
+    })
+  }
+
   async function addToShoppingList(productId: string) {
     try {
       // If already on list → remove. Otherwise → add.
@@ -289,7 +366,7 @@ export default function Home() {
 
   async function handleGlobalScan(result: BarcodeLookupResult) {
     try {
-      // Check local DB first (instant)
+      // Check local DB first — exact barcode match
       const localProducts = await localDb.products.toArray()
       const existing = localProducts.find(
         (p) => p.barcode === result.barcode && !p.deletedAt
@@ -304,9 +381,64 @@ export default function Home() {
         if (full) setSelectedProduct(full)
         return
       }
+
+      // No exact barcode match — search for similar products by name.
+      // This handles the case where you have "Mac & Cheese" already, and
+      // you scan a different barcode (e.g., dinner cups vs boxes) that
+      // OpenFoodFacts also calls "Mac & Cheese" — you'd want to add it as
+      // a variant of the existing product, not create a duplicate.
+      const activeProducts = localProducts.filter((p) => !p.deletedAt)
+      const lookupName = result.name.toLowerCase()
+      const lookupWords = lookupName.split(/\s+/).filter((w) => w.length > 2)
+
+      const matches = activeProducts
+        .map((p) => {
+          const productName = p.name.toLowerCase()
+          const productBrand = (p.brand ?? '').toLowerCase()
+          // Score by how many words from the lookup name appear in the product name
+          let score = 0
+          for (const word of lookupWords) {
+            if (productName.includes(word)) score++
+            if (productBrand.includes(word)) score++
+          }
+          // Also boost if the product name is a substring of the lookup or vice versa
+          if (lookupName.includes(productName) || productName.includes(lookupName)) {
+            score += 3
+          }
+          return { product: p, score }
+        })
+        .filter((m) => m.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5)
+
+      if (matches.length > 0) {
+        // Show the variant picker — let the user decide
+        const matchData = await Promise.all(
+          matches.map(async (m) => {
+            const priceCount = await localDb.priceEntries
+              .where('productId')
+              .equals(m.product.id)
+              .filter((p) => !p.deletedAt)
+              .count()
+            return {
+              id: m.product.id,
+              name: m.product.name,
+              brand: m.product.brand,
+              category: m.product.category,
+              priceCount,
+            }
+          })
+        )
+        setPendingLookup(result)
+        setVariantMatches(matchData)
+        setVariantPickerOpen(true)
+        return
+      }
     } catch {
       // ignore — fall through to new-product flow
     }
+
+    // No matches at all — create a new product
     setEditingProduct(null)
     setPendingLookup(result)
     setProductFormOpen(true)
@@ -749,83 +881,24 @@ export default function Home() {
         open={globalScannerOpen}
         onOpenChange={setGlobalScannerOpen}
         onDetected={(result) => void handleGlobalScan(result)}
-        onProductSelected={(productId) => {
-          // Find the product in local DB and open detail dialog
-          void (async () => {
-            const localProduct = await localDb.products.get(productId)
-            if (localProduct) {
-              // Build a minimal Product object for the detail dialog
-              const { computePrice, isSaleExpired } = await import('@/lib/units')
-              const [localPrices, localStores] = await Promise.all([
-                localDb.priceEntries.where('productId').equals(productId).toArray(),
-                localDb.stores.toArray(),
-              ])
-              const storeMap = new Map(localStores.filter((s) => !s.deletedAt).map((s) => [s.id, s]))
-              const visiblePrices = localPrices
-                .filter((p) => !p.deletedAt)
-                .filter((p) => !p.isSale || !isSaleExpired(p.saleExpiresAt))
-
-              const prices = visiblePrices.map((p) => {
-                const store = storeMap.get(p.storeId)
-                return {
-                  id: p.id,
-                  storeId: p.storeId,
-                  storeName: store?.name ?? 'Unknown',
-                  storeColor: store?.color ?? '#888',
-                  storeLocation: store?.location ?? null,
-                  price: p.price,
-                  quantity: p.quantity,
-                  sizeValue: p.sizeValue,
-                  sizeUnit: p.sizeUnit,
-                  notes: p.notes ?? null,
-                  isSale: p.isSale,
-                  saleExpiresAt: p.saleExpiresAt ?? null,
-                  isOnline: p.isOnline ?? false,
-                  barcode: p.barcode ?? null,
-                  dateChecked: p.dateChecked,
-                  createdAt: p.createdAt,
-                  ...computePrice(p),
-                }
-              })
-
-              const byCategory: Record<string, typeof prices> = {}
-              for (const c of prices) {
-                if (!byCategory[c.category]) byCategory[c.category] = []
-                byCategory[c.category].push(c)
-              }
-              for (const k of Object.keys(byCategory)) {
-                byCategory[k].sort((a, b) => a.pricePerBaseUnit - b.pricePerBaseUnit)
-              }
-              const bestPerCategory: Record<string, typeof prices[0] | undefined> = {}
-              for (const [cat, entries] of Object.entries(byCategory)) {
-                bestPerCategory[cat] = entries[0]
-              }
-              const allPrices = prices.map((c) => c.pricePerBaseUnit)
-              const lowestPricePerUnit = allPrices.length ? Math.min(...allPrices) : null
-              const storeCount = new Set(prices.map((pr) => pr.storeId)).size
-
-              setSelectedProduct({
-                id: localProduct.id,
-                name: localProduct.name,
-                brand: localProduct.brand,
-                category: localProduct.category,
-                notes: localProduct.notes,
-                imageUrl: localProduct.imageUrl,
-                barcode: localProduct.barcode,
-                createdAt: localProduct.createdAt,
-                updatedAt: localProduct.updatedAt,
-                prices,
-                byCategory,
-                bestPerCategory,
-                lowestPricePerUnit,
-                storeCount,
-                priceCount: prices.length,
-              })
-            }
-          })()
-        }}
+        onProductSelected={(productId) => void openProductById(productId)}
         title="Scan product barcode"
         description="Point your camera at any product barcode. We'll look it up on OpenFoodFacts and either open the existing product (to add a variant price) or pre-fill a new product form."
+      />
+      <VariantPickerDialog
+        open={variantPickerOpen}
+        onOpenChange={setVariantPickerOpen}
+        lookup={pendingLookup}
+        matches={variantMatches}
+        onPickExisting={(productId) => {
+          setVariantPickerOpen(false)
+          void openProductById(productId)
+        }}
+        onCreateNew={() => {
+          setVariantPickerOpen(false)
+          setEditingProduct(null)
+          setProductFormOpen(true)
+        }}
       />
       <ShoppingListDialog
         open={shoppingListOpen}
