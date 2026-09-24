@@ -17,6 +17,7 @@ import {
   Flame,
   ShoppingCart,
   Check,
+  Copy,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -93,6 +94,7 @@ export function ProductDetailDialog({
   const { toast } = useToast()
   const [priceFormOpen, setPriceFormOpen] = useState(false)
   const [editingPrice, setEditingPrice] = useState<ComputedPrice | null>(null)
+  const [forkingPrice, setForkingPrice] = useState<ComputedPrice | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [addingToList, setAddingToList] = useState(false)
 
@@ -101,6 +103,7 @@ export function ProductDetailDialog({
     if (!open) {
       setPriceFormOpen(false)
       setEditingPrice(null)
+      setForkingPrice(null)
       setDeletingId(null)
     }
   }, [open])
@@ -185,6 +188,7 @@ export function ProductDetailDialog({
                 size="sm"
                 onClick={() => {
                   setEditingPrice(null)
+                  setForkingPrice(null)
                   setPriceFormOpen(true)
                 }}
               >
@@ -211,6 +215,7 @@ export function ProductDetailDialog({
                   className="mt-3"
                   onClick={() => {
                     setEditingPrice(null)
+                    setForkingPrice(null)
                     setPriceFormOpen(true)
                   }}
                 >
@@ -336,11 +341,26 @@ export function ProductDetailDialog({
                               className="h-7 w-7"
                               onClick={() => {
                                 setEditingPrice(best)
+                                setForkingPrice(null)
                                 setPriceFormOpen(true)
                               }}
                               aria-label="Edit best price"
                             >
                               <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={() => {
+                                setEditingPrice(null)
+                                setForkingPrice(best)
+                                setPriceFormOpen(true)
+                              }}
+                              aria-label="Copy as new price"
+                              title="Copy as new"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                               size="icon"
@@ -444,11 +464,26 @@ export function ProductDetailDialog({
                                   className="h-6 w-6"
                                   onClick={() => {
                                     setEditingPrice(p)
+                                    setForkingPrice(null)
                                     setPriceFormOpen(true)
                                   }}
                                   aria-label="Edit price"
                                 >
                                   <Pencil className="h-3 w-3" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-6 w-6"
+                                  onClick={() => {
+                                    setEditingPrice(null)
+                                    setForkingPrice(p)
+                                    setPriceFormOpen(true)
+                                  }}
+                                  aria-label="Copy as new price"
+                                  title="Copy as new"
+                                >
+                                  <Copy className="h-3 w-3" />
                                 </Button>
                                 <Button
                                   size="icon"
@@ -489,6 +524,7 @@ export function ProductDetailDialog({
                   size="sm"
                   onClick={() => {
                     setEditingPrice(null)
+                    setForkingPrice(null)
                     setPriceFormOpen(true)
                   }}
                 >
@@ -506,6 +542,7 @@ export function ProductDetailDialog({
         product={product}
         stores={stores}
         initial={editingPrice}
+        forkFrom={forkingPrice}
         onSaved={onPricesChanged}
       />
     </>

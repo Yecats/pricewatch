@@ -77,6 +77,9 @@ interface Props {
   product: Product
   stores: Store[]
   initial?: ComputedPrice | null
+  /** When set, pre-fills the form with these values but creates a NEW price entry
+   *  (not editing). Used for the "fork/copy as new" feature. */
+  forkFrom?: ComputedPrice | null
   onSaved: () => void
 }
 
@@ -124,12 +127,15 @@ export function PriceFormDialog({
   product,
   stores,
   initial,
+  forkFrom,
   onSaved,
 }: Props) {
   const { toast } = useToast()
   const [submitting, setSubmitting] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
   const isEdit = !!initial
+  // Use forkFrom for pre-filling if no initial (edit) is set
+  const prefillSource = initial ?? forkFrom
 
   const today = new Date().toISOString().slice(0, 10)
 
@@ -157,24 +163,24 @@ export function PriceFormDialog({
   useEffect(() => {
     if (open) {
       form.reset({
-        storeId: initial?.storeId ?? '',
-        price: initial?.price ?? 0,
-        quantity: initial?.quantity ?? 1,
-        sizeValue: initial?.sizeValue ?? 1,
-        sizeUnit: initial?.sizeUnit ?? 'count',
-        notes: initial?.notes ?? '',
-        dateChecked: initial?.dateChecked
-          ? new Date(initial.dateChecked).toISOString().slice(0, 10)
+        storeId: prefillSource?.storeId ?? '',
+        price: prefillSource?.price ?? 0,
+        quantity: prefillSource?.quantity ?? 1,
+        sizeValue: prefillSource?.sizeValue ?? 1,
+        sizeUnit: prefillSource?.sizeUnit ?? 'count',
+        notes: prefillSource?.notes ?? '',
+        dateChecked: prefillSource?.dateChecked
+          ? new Date(prefillSource.dateChecked).toISOString().slice(0, 10)
           : today,
-        isSale: initial?.isSale ?? false,
-        saleExpiresAt: initial?.saleExpiresAt
-          ? new Date(initial.saleExpiresAt).toISOString().slice(0, 10)
+        isSale: prefillSource?.isSale ?? false,
+        saleExpiresAt: prefillSource?.saleExpiresAt
+          ? new Date(prefillSource.saleExpiresAt).toISOString().slice(0, 10)
           : tomorrowDateInput(),
-        isOnline: initial?.isOnline ?? false,
+        isOnline: prefillSource?.isOnline ?? false,
         barcode: '',
       })
     }
-  }, [open, initial, form, today])
+  }, [open, prefillSource, form, today])
 
   function handleBarcodeLookup(result: BarcodeLookupResult) {
     const updates: Partial<FormValues> = {
@@ -279,7 +285,7 @@ export function PriceFormDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between gap-2">
-            <span>{isEdit ? 'Edit price' : 'Add price entry'}</span>
+            <span>{isEdit ? 'Edit price' : forkFrom ? 'Copy price' : 'Add price entry'}</span>
             {!isEdit && (
               <Button
                 type="button"
@@ -624,7 +630,7 @@ export function PriceFormDialog({
               </Button>
               <Button type="submit" disabled={submitting}>
                 {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isEdit ? 'Save changes' : 'Add price'}
+                {isEdit ? 'Save changes' : forkFrom ? 'Add copy' : 'Add price'}
               </Button>
             </DialogFooter>
           </form>
