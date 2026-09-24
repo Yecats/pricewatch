@@ -228,3 +228,54 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeLookupResul
   if (upc) return upc
   return null
 }
+
+/**
+ * Search OpenFoodFacts by product name. Returns up to 10 results.
+ * Uses the OFF search API: https://world.openfoodfacts.org/cgi/search.pl
+ */
+export async function searchOpenFoodFacts(query: string): Promise<BarcodeLookupResult[]> {
+  if (!query.trim()) return []
+  try {
+    const params = new URLSearchParams({
+      search_terms: query.trim(),
+      search_simple: '1',
+      action: 'process',
+      json: '1',
+      page: '1',
+      page_size: '10',
+      fields: 'code,product_name,product_name_en,brands,quantity,image_url,image_front_url,image_front_small_url,categories,categories_tags,generic_name',
+    })
+    const res = await fetch(
+      `https://world.openfoodfacts.org/cgi/search.pl?${params.toString()}`,
+      { headers: { Accept: 'application/json' } }
+    )
+    if (!res.ok) return []
+    const data = await res.json()
+    if (!data.products || !Array.isArray(data.products)) return []
+
+    const results: BarcodeLookupResult[] = []
+    for (const p of data.products) {
+      const name = p.product_name_en || p.product_name || p.generic_name
+      if (!name) continue
+      const brandStr = p.brands || null
+      const brand = brandStr ? brandStr.split(',')[0].trim() : null
+      const qStr = extractQuantityFromOFF(p)
+      const parsed = qStr ? parseQuantityString(qStr) : null
+      const imageUrl = p.image_front_url || p.image_front_small_url || p.image_url || null
+      const barcode = p.code || ''
+      results.push({
+        barcode,
+        name,
+        brand,
+        category: extractCategory(p),
+        imageUrl,
+        sizeValue: parsed?.sizeValue ?? null,
+        sizeUnit: parsed?.sizeUnit ?? null,
+        source: 'openfoodfacts',
+      })
+    }
+    return results
+  } catch {
+    return []
+  }
+}

@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
-import { lookupBarcode, type BarcodeLookupResult } from '@/lib/barcode'
+import { lookupBarcode, searchOpenFoodFacts, type BarcodeLookupResult } from '@/lib/barcode'
 import { localDb } from '@/lib/local-db'
 
 interface Props {
@@ -66,7 +66,11 @@ export function BarcodeScannerDialog({
   const [cameraLabel, setCameraLabel] = useState<string | null>(null)
   // Search-by-name state
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<Array<{ id: string; name: string; brand?: string | null; category?: string | null }>>([])
+  // Local product results (from IndexedDB)
+  const [localResults, setLocalResults] = useState<Array<{ id: string; name: string; brand?: string | null; category?: string | null }>>([])
+  // OpenFoodFacts search results (from the online DB)
+  const [offResults, setOffResults] = useState<BarcodeLookupResult[]>([])
+  const [searching, setSearching] = useState(false)
 
   const stop = useCallback(() => {
     if (controlsRef.current) {
@@ -104,7 +108,9 @@ export function BarcodeScannerDialog({
         setLastDetected(null)
         setCameraLabel(null)
         setSearchQuery('')
-        setSearchResults([])
+        setLocalResults([])
+        setOffResults([])
+        setSearching(false)
       }
       queueMicrotask(reset)
     }
@@ -415,11 +421,11 @@ export function BarcodeScannerDialog({
           </div>
         )}
 
-        {/* Search by name — always visible */}
+        {/* Search by name — searches both local products and OpenFoodFacts */}
         {onProductSelected && phase !== 'looking-up' && (
           <div className="space-y-2 border-t pt-3">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-              Search your products
+              Search products
             </div>
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -428,47 +434,119 @@ export function BarcodeScannerDialog({
                 onChange={async (e) => {
                   const q = e.target.value
                   setSearchQuery(q)
-                  if (q.trim().length >= 1) {
-                    const all = await localDb.products.toArray()
-                    const filtered = all
-                      .filter((p) => !p.deletedAt)
-                      .filter((p) =>
-                        p.name.toLowerCase().includes(q.toLowerCase()) ||
-                        (p.brand && p.brand.toLowerCase().includes(q.toLowerCase()))
-                      )
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .slice(0, 5)
-                    setSearchResults(filtered)
-                  } else {
-                    setSearchResults([])
+                  if (q.trim().length < 2) {
+                    setLocalResults([])
+                    setOffResults([])
+                    return
+                  }
+                  // Search local products (instant)
+                  const all = await localDb.products.toArray()
+                  const filtered = all
+                    .filter((p) => !p.deletedAt)
+                    .filter((p) =>
+                      p.name.toLowerCase().includes(q.toLowerCase()) ||
+                      (p.brand && p.brand.toLowerCase().includes(q.toLowerCase()))
+                    )
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .slice(0, 3)
+                  setLocalResults(filtered)
+                  // Search OpenFoodFacts (debounced, online)
+                  setSearching(true)
+                  try {
+                    const offResults = await searchOpenFoodFacts(q)
+                    setOffResults(offResults)
+                  } catch {
+                    setOffResults([])
+                  } finally {
+                    setSearching(false)
                   }
                 }}
-                placeholder="Type a product name..."
+                placeholder="Type a product name to search online..."
                 className="pl-8 text-sm"
               />
+              {searching && (
+                <Loader2 className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              )}
             </div>
-            {searchResults.length > 0 && (
-              <div className="rounded-lg border divide-y max-h-40 overflow-y-auto scrollbar-thin">
-                {searchResults.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => {
-                      onProductSelected(p.id)
-                      onOpenChange(false)
-                    }}
-                    className="w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2"
-                  >
-                    <Search className="h-3 w-3 text-muted-foreground shrink-0" />
-                    <span className="text-sm font-medium truncate">{p.name}</span>
-                    {p.brand && (
-                      <span className="text-[10px] text-muted-foreground">· {p.brand}</span>
-                    )}
-                    {p.category && (
-                      <span className="text-[10px] text-muted-foreground/60 ml-auto">{p.category}</span>
-                    )}
-                  </button>
-                ))}
+
+            {/* Local product results (from your database) */}
+            {localResults.length > 0 && (
+              <div>
+                <div className="text-[9px] uppercase tracking-wider text-muted-foreground/70 font-medium mb-1">
+                  Your products
+                </div>
+                <div className="rounded-lg border divide-y">
+                  {localResults.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        onProductSelected(p.id)
+                        onOpenChange(false)
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2"
+                    >
+                      <span className="text-sm font-medium truncate">{p.name}</span>
+                      {p.brand && (
+                        <span className="text-[10px] text-muted-foreground">· {p.brand}</span>
+                      )}
+                      {p.category && (
+                        <span className="text-[10px] text-muted-foreground/60 ml-auto">{p.category}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* OpenFoodFacts results (from the online database) */}
+            {offResults.length > 0 && (
+              <div>
+                <div className="text-[9px] uppercase tracking-wider text-muted-foreground/70 font-medium mb-1">
+                  From OpenFoodFacts
+                </div>
+                <div className="rounded-lg border divide-y max-h-48 overflow-y-auto scrollbar-thin">
+                  {offResults.map((r, i) => (
+                    <button
+                      key={`${r.barcode}-${i}`}
+                      type="button"
+                      onClick={() => {
+                        // Treat this like a barcode lookup result — pass to onDetected
+                        // which will check if the barcode exists locally, show variant
+                        // picker if needed, or create a new product
+                        onDetected(r)
+                        onOpenChange(false)
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2"
+                    >
+                      {r.imageUrl && (
+                        <div className="h-8 w-8 shrink-0 rounded overflow-hidden border bg-muted">
+                          {/* Using a plain img because URL comes from a third-party API */}
+                          <img
+                            src={r.imageUrl}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            onError={(e) => {
+                              ;(e.target as HTMLImageElement).style.display = 'none'
+                            }}
+                          />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium truncate">{r.name}</div>
+                        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                          {r.brand && <span>{r.brand}</span>}
+                          {r.sizeValue && r.sizeUnit && (
+                            <>
+                              <span>·</span>
+                              <span>{r.sizeValue} {r.sizeUnit}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
