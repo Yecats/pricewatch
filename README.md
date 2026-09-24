@@ -252,6 +252,20 @@ To switch back to SQLite for local dev: `./deploy/swap-schema.sh sqlite`
 | `bun run db:generate` | Regenerate Prisma client |
 | `bun run lint` | Check code quality |
 
+## Updating the app after pulling new changes
+
+When you `git pull` and get new code, you may also need to update your local database schema and Prisma client:
+
+```bash
+git pull origin main
+bun install              # if dependencies changed
+bun run db:generate      # regenerate Prisma client (always safe to run)
+bun run db:push          # apply any schema changes to your local SQLite DB
+bun run dev              # or bun run start:lan for production
+```
+
+**If you see "Unknown argument" errors in the console** (e.g. `Unknown argument isOnline`), it means the code references a database column that doesn't exist in your local DB yet. Running `bun run db:push` will add it.
+
 ## Tech stack
 
 - **Framework:** Next.js 16 (App Router, standalone output)
