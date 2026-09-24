@@ -25,7 +25,6 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -476,83 +475,73 @@ export function PriceFormDialog({
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <FormField
-                control={form.control}
-                name="dateChecked"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Date checked</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Sale price toggle + expiration date */}
-              <FormField
-                control={form.control}
-                name="isSale"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Sale price</FormLabel>
-                    <FormControl>
-                      <label
-                        className={`flex items-center gap-2 h-9 rounded-md border px-3 cursor-pointer transition-colors ${
-                          field.value
-                            ? 'border-primary/40 bg-primary/5'
-                            : 'border-input hover:bg-accent'
-                        }`}
-                      >
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          aria-label="Mark as sale price"
-                        />
-                        <Tag className={`h-3.5 w-3.5 ${field.value ? 'text-primary' : 'text-muted-foreground'}`} />
-                        <span className="text-sm font-medium">
-                          {field.value ? 'On sale' : 'Regular price'}
-                        </span>
-                      </label>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Online purchase toggle */}
-              <FormField
-                control={form.control}
-                name="isOnline"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Source</FormLabel>
-                    <FormControl>
-                      <label
-                        className={`flex items-center gap-2 h-9 rounded-md border px-3 cursor-pointer transition-colors ${
-                          field.value
-                            ? 'border-sky-400/60 bg-sky-50 dark:bg-sky-950/30'
-                            : 'border-input hover:bg-accent'
-                        }`}
-                      >
-                        <Checkbox
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                          aria-label="Mark as online purchase"
-                        />
-                        <Globe className={`h-3.5 w-3.5 ${field.value ? 'text-sky-600 dark:text-sky-400' : 'text-muted-foreground'}`} />
-                        <span className="text-sm font-medium">
-                          {field.value ? 'Online' : 'In-store'}
-                        </span>
-                      </label>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {/* Tags row — Deal and Online as clean clickable chips */}
+            <div>
+              <FormLabel className="block mb-1.5">Tags</FormLabel>
+              <div className="flex gap-2 flex-wrap">
+                <FormField
+                  control={form.control}
+                  name="isSale"
+                  render={({ field }) => (
+                    <FormItem className="space-y-0">
+                      <FormControl>
+                        <button
+                          type="button"
+                          onClick={() => field.onChange(!field.value)}
+                          className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium border transition-colors ${
+                            field.value
+                              ? 'border-amber-400/60 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700/60'
+                              : 'border-input bg-background hover:bg-accent text-muted-foreground'
+                          }`}
+                        >
+                          <Tag className="h-3.5 w-3.5" />
+                          Deal
+                        </button>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="isOnline"
+                  render={({ field }) => (
+                    <FormItem className="space-y-0">
+                      <FormControl>
+                        <button
+                          type="button"
+                          onClick={() => field.onChange(!field.value)}
+                          className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium border transition-colors ${
+                            field.value
+                              ? 'border-sky-400/60 bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-700/60'
+                              : 'border-input bg-background hover:bg-accent text-muted-foreground'
+                          }`}
+                        >
+                          <Globe className="h-3.5 w-3.5" />
+                          Online Price
+                        </button>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
+
+            {/* Date checked — on its own row so it's not cramped */}
+            <FormField
+              control={form.control}
+              name="dateChecked"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Date checked</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             {/* Conditional expiration date field */}
             {isSale && (

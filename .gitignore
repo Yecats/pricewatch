@@ -40,7 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-local-*
+# local-* is too broad — it matches local-db.ts which we need.
+# Only ignore local env files instead.
+local.env
 .claude
 .z-ai-config
 *.log

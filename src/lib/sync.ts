@@ -23,6 +23,8 @@ interface SyncState {
   lastSyncAt: string | null
   lastError: string | null
   pendingCount: number  // number of local changes not yet pushed
+  hadChanges: boolean  // true if the last sync actually pulled/pushed changes
+  syncCount: number  // increments on every sync that had changes (use as a dependency)
 }
 
 type SyncListener = (state: SyncState) => void
@@ -32,6 +34,8 @@ let currentState: SyncState = {
   lastSyncAt: null,
   lastError: null,
   pendingCount: 0,
+  hadChanges: false,
+  syncCount: 0,
 }
 
 const listeners = new Set<SyncListener>()
@@ -237,7 +241,27 @@ export async function sync(): Promise<void> {
     await localDb.syncMeta.put({ key: 'lastSyncAt', value: serverTime })
 
     await refreshPendingCount()
-    setState({ status: 'idle', lastSyncAt: serverTime, lastError: null })
+
+    // Determine if this sync actually had any changes (pulled or pushed)
+    const hadChanges =
+      (serverChanges.stores?.length ?? 0) > 0 ||
+      (serverChanges.products?.length ?? 0) > 0 ||
+      (serverChanges.priceEntries?.length ?? 0) > 0 ||
+      (serverChanges.shoppingListItems?.length ?? 0) > 0 ||
+      pendingStores.length > 0 ||
+      pendingProducts.length > 0 ||
+      pendingPrices.length > 0 ||
+      pendingItems.length > 0
+
+    setState({
+      status: 'idle',
+      lastSyncAt: serverTime,
+      lastError: null,
+      hadChanges,
+      // Only increment syncCount if there were actual changes — this is what
+      // the page listens to so it knows when to reload local data
+      syncCount: hadChanges ? currentState.syncCount + 1 : currentState.syncCount,
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Sync failed'
     setState({ status: 'error', lastError: msg })

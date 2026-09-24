@@ -178,7 +178,7 @@ export function ProductDetailDialog({
                   ) : (
                     <ShoppingCart className="mr-1 h-3.5 w-3.5" />
                   )}
-                  {isOnList ? 'On list (click to remove)' : 'Add to list'}
+                  {isOnList ? 'On list' : 'Add to list'}
                 </Button>
               )}
               <Button

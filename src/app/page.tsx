@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Plus,
   Search,
@@ -90,15 +90,20 @@ export default function Home() {
   }, [])
 
   // === Sync initialization + listener ===
-  // Trigger initial sync on app open, and re-read local data whenever sync completes
+  // Trigger initial sync on app open, and re-read local data whenever sync
+  // completes WITH actual changes (not on every 60-second no-op sync)
   const [syncState, setSyncState] = useState<SyncState>(getSyncState())
+  const lastSyncCountRef = useRef(syncState.syncCount)
 
   useEffect(() => {
     initSync()
     const unsub = subscribe((state) => {
       setSyncState(state)
-      // When sync completes (idle), reload local data to reflect any server changes
-      if (state.status === 'idle') {
+      // Only reload local data when syncCount actually changed — this means
+      // the sync pulled or pushed real changes. No-op syncs (every 60s with
+      // nothing new) won't trigger a reload, so open dialogs won't close.
+      if (state.status === 'idle' && state.syncCount !== lastSyncCountRef.current) {
+        lastSyncCountRef.current = state.syncCount
         void reloadProducts()
         void reloadStores()
         void loadShoppingListIds()
@@ -644,6 +649,13 @@ export default function Home() {
         initialLookup={pendingLookup}
         onLookupConsumed={() => setPendingLookup(null)}
         onSaved={handleProductSaved}
+        existingCategories={Array.from(
+          new Set(
+            products
+              .map((p) => p.category)
+              .filter((c): c is string => Boolean(c))
+          )
+        ).sort()}
       />
       <StoresDialog
         open={storesDialogOpen}
@@ -658,7 +670,75 @@ export default function Home() {
         }}
         product={selectedProduct}
         stores={stores}
-        onPricesChanged={reloadProducts}
+        onPricesChanged={async () => {
+          await reloadProducts()
+          // After reloading products, update selectedProduct to the fresh version
+          // so the detail dialog reflects the new prices immediately
+          if (selectedProduct) {
+            const localProduct = await localDb.products.get(selectedProduct.id)
+            if (localProduct) {
+              // Re-read all prices for this product from local DB
+              const [localPrices, localStores] = await Promise.all([
+                localDb.priceEntries.where('productId').equals(selectedProduct.id).toArray(),
+                localDb.stores.toArray(),
+              ])
+              const storeMap = new Map(localStores.filter((s) => !s.deletedAt).map((s) => [s.id, s]))
+              const { computePrice, isSaleExpired } = await import('@/lib/units')
+              const visiblePrices = localPrices
+                .filter((p) => !p.deletedAt)
+                .filter((p) => !p.isSale || !isSaleExpired(p.saleExpiresAt))
+
+              const prices = visiblePrices.map((p) => {
+                const store = storeMap.get(p.storeId)
+                return {
+                  id: p.id,
+                  storeId: p.storeId,
+                  storeName: store?.name ?? 'Unknown',
+                  storeColor: store?.color ?? '#888',
+                  storeLocation: store?.location ?? null,
+                  price: p.price,
+                  quantity: p.quantity,
+                  sizeValue: p.sizeValue,
+                  sizeUnit: p.sizeUnit,
+                  notes: p.notes ?? null,
+                  isSale: p.isSale,
+                  saleExpiresAt: p.saleExpiresAt ?? null,
+                  isOnline: p.isOnline ?? false,
+                  barcode: p.barcode ?? null,
+                  dateChecked: p.dateChecked,
+                  createdAt: p.createdAt,
+                  ...computePrice(p),
+                }
+              })
+
+              const byCategory: Record<string, typeof prices> = {}
+              for (const c of prices) {
+                if (!byCategory[c.category]) byCategory[c.category] = []
+                byCategory[c.category].push(c)
+              }
+              for (const k of Object.keys(byCategory)) {
+                byCategory[k].sort((a, b) => a.pricePerBaseUnit - b.pricePerBaseUnit)
+              }
+              const bestPerCategory: Record<string, typeof prices[0] | undefined> = {}
+              for (const [cat, entries] of Object.entries(byCategory)) {
+                bestPerCategory[cat] = entries[0]
+              }
+              const allPrices = prices.map((c) => c.pricePerBaseUnit)
+              const lowestPricePerUnit = allPrices.length ? Math.min(...allPrices) : null
+              const storeCount = new Set(prices.map((pr) => pr.storeId)).size
+
+              setSelectedProduct({
+                ...selectedProduct,
+                prices,
+                byCategory,
+                bestPerCategory,
+                lowestPricePerUnit,
+                storeCount,
+                priceCount: prices.length,
+              })
+            }
+          }
+        }}
         onAddToList={async (id) => {
           await addToShoppingList(id)
           await loadShoppingListIds()

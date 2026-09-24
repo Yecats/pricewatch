@@ -26,6 +26,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { CategoryCombobox } from './category-combobox'
 import { useToast } from '@/hooks/use-toast'
 import type { Product } from './types'
 import { BarcodeScannerDialog } from './barcode-scanner-dialog'
@@ -54,6 +55,8 @@ interface Props {
   initialLookup?: BarcodeLookupResult | null
   /** Notify parent when the lookup has been consumed (so it can be cleared). */
   onLookupConsumed?: () => void
+  /** Existing categories from the user's products — shown at the top of the dropdown */
+  existingCategories?: string[]
 }
 
 export function ProductFormDialog({
@@ -64,6 +67,7 @@ export function ProductFormDialog({
   openScannerOnMount,
   initialLookup,
   onLookupConsumed,
+  existingCategories = [],
 }: Props) {
   const { toast } = useToast()
   const [submitting, setSubmitting] = useState(false)
@@ -302,7 +306,12 @@ export function ProductFormDialog({
                     <FormItem>
                       <FormLabel>Category</FormLabel>
                       <FormControl>
-                        <Input placeholder="Pantry" {...field} />
+                        <CategoryCombobox
+                          value={field.value ?? ''}
+                          onChange={field.onChange}
+                          placeholder="Select category…"
+                          existingCategories={existingCategories}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

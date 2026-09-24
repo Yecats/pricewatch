@@ -96,7 +96,10 @@ function extractQuantityFromOFF(p: any): string | null {
   return null
 }
 
-/** Map an OpenFoodFacts category string to a short category label (first segment). */
+/** Map an OpenFoodFacts category string to a short category label.
+ * Tries to map OFF's specific tags to our common grocery categories first.
+ * Falls back to a cleaned-up version of the most-specific tag.
+ */
 function extractCategory(p: any): string | null {
   if (!p) return null
   const cats: string[] = Array.isArray(p.categories_tags)
@@ -105,8 +108,38 @@ function extractCategory(p: any): string | null {
     ? p.categories.split(',').map((s: string) => s.trim()).filter(Boolean)
     : []
   if (cats.length === 0) return null
-  // Pick the most specific category (last in the chain)
-  // e.g. "en:beverages, en:plant-based-beverages" -> "Plant-based beverages"
+
+  // Join all categories into a single lowercase string for matching
+  const allCatsLower = cats.join(' ').toLowerCase()
+
+  // Map common OpenFoodFacts tags to our standard categories
+  const mappings: Array<{ test: RegExp; category: string }> = [
+    { test: /dair(y|ies)/, category: 'Dairy' },
+    { test: /milk|cheese|yogurt|butter|cream/, category: 'Dairy' },
+    { test: /meat|beef|pork|chicken|poultry|sausage|bacon/, category: 'Meat' },
+    { test: /fish|seafood|salmon|tuna|shrimp/, category: 'Seafood' },
+    { test: /fruit|vegetable|produce|fresh/, category: 'Produce' },
+    { test: /frozen/, category: 'Frozen' },
+    { test: /bread|bakery|pastry|cake|cookie/, category: 'Bakery' },
+    { test: /beverage|drink|soda|juice|tea|coffee|water/, category: 'Beverages' },
+    { test: /snack|chip|candy|chocolate|popcorn/, category: 'Snacks' },
+    { test: /sauce|condiment|ketchup|mustard|mayonnaise/, category: 'Condiments & Sauces' },
+    { test: /spice|seasoning|herb/, category: 'Spices & Seasonings' },
+    { test: /canned|jarred/, category: 'Canned Goods' },
+    { test: /pasta|noodle|rice|grain|cereal/, category: 'Pasta & Grains' },
+    { test: /breakfast|oatmeal|granola/, category: 'Cereal & Breakfast' },
+    { test: /baking|flour|sugar|baking/, category: 'Baking' },
+    { test: /deli|delicatessen/, category: 'Deli' },
+    { test: /pantry|food|grocery|meal|dish|prepared/, category: 'Pantry' },
+  ]
+
+  for (const { test, category } of mappings) {
+    if (test.test(allCatsLower)) {
+      return category
+    }
+  }
+
+  // Fallback: pick the most specific category (last in the chain), cleaned up
   const last = cats[cats.length - 1].replace(/^en:/, '')
   return last
     .split('-')
