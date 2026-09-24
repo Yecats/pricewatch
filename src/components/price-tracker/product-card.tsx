@@ -172,14 +172,16 @@ export function ProductCard({
               {adding ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <div className="relative">
+                <div className="relative inline-flex">
                   <ShoppingCart
                     className={`h-3.5 w-3.5 ${
                       isOnList ? 'text-primary' : 'text-muted-foreground'
                     }`}
                   />
                   {isOnList && (
-                    <Check className="h-2 w-2 text-primary-foreground absolute -bottom-0.5 -right-0.5 bg-primary rounded-full p-px" />
+                    <span className="absolute -top-1.5 -right-1.5 h-3 w-3 rounded-full bg-primary flex items-center justify-center ring-1 ring-background">
+                      <Check className="h-2 w-2 text-primary-foreground" strokeWidth={4} />
+                    </span>
                   )}
                 </div>
               )}

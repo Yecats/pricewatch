@@ -496,7 +496,7 @@ export function PriceFormDialog({
                           onClick={() => field.onChange(!field.value)}
                           className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium border transition-colors ${
                             field.value
-                              ? 'border-amber-400/60 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-700/60'
+                              ? 'border-amber-500 bg-amber-500 text-white dark:bg-amber-600 dark:border-amber-600'
                               : 'border-input bg-background hover:bg-accent text-muted-foreground'
                           }`}
                         >
@@ -519,7 +519,7 @@ export function PriceFormDialog({
                           onClick={() => field.onChange(!field.value)}
                           className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium border transition-colors ${
                             field.value
-                              ? 'border-sky-400/60 bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300 dark:border-sky-700/60'
+                              ? 'border-sky-500 bg-sky-500 text-white dark:bg-sky-600 dark:border-sky-600'
                               : 'border-input bg-background hover:bg-accent text-muted-foreground'
                           }`}
                         >
