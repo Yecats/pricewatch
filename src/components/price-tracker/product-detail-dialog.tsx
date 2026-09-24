@@ -18,6 +18,8 @@ import {
   ShoppingCart,
   Check,
   Copy,
+  Globe,
+  History,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -31,6 +33,7 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import {
   formatCurrency,
@@ -39,10 +42,13 @@ import {
   formatRelativeDate,
   formatSaleCountdown,
   saleCountdownSeverity,
+  isSaleExpired,
   formatSize,
   BASE_UNIT_LABEL,
   type UnitCategory,
 } from '@/lib/units'
+import { localDb } from '@/lib/local-db'
+import { localAddPrice } from '@/hooks/use-local-data'
 import type { ComputedPrice, Product, Store } from './types'
 import { PriceFormDialog } from './price-form-dialog'
 
@@ -97,6 +103,16 @@ export function ProductDetailDialog({
   const [forkingPrice, setForkingPrice] = useState<ComputedPrice | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [addingToList, setAddingToList] = useState(false)
+  const [activeTab, setActiveTab] = useState<'current' | 'history'>('current')
+  const [historyPrices, setHistoryPrices] = useState<ComputedPrice[]>([])
+  const [reactivatingId, setReactivatingId] = useState<string | null>(null)
+
+  // Load ALL price entries (including expired sales) when the history tab is opened
+  useEffect(() => {
+    if (open && activeTab === 'history' && product) {
+      void loadHistory()
+    }
+  }, [open, activeTab, product])
 
   // Reset internal state when dialog closes
   useEffect(() => {
@@ -105,8 +121,86 @@ export function ProductDetailDialog({
       setEditingPrice(null)
       setForkingPrice(null)
       setDeletingId(null)
+      setActiveTab('current')
+      setHistoryPrices([])
     }
   }, [open])
+
+  async function loadHistory() {
+    if (!product) return
+    try {
+      const [localPrices, localStores] = await Promise.all([
+        localDb.priceEntries.where('productId').equals(product.id).toArray(),
+        localDb.stores.toArray(),
+      ])
+      const storeMap = new Map(localStores.filter((s) => !s.deletedAt).map((s) => [s.id, s]))
+      const { computePrice } = await import('@/lib/units')
+      const all = localPrices
+        .filter((p) => !p.deletedAt)
+        .map((p) => {
+          const store = storeMap.get(p.storeId)
+          return {
+            id: p.id,
+            storeId: p.storeId,
+            storeName: store?.name ?? 'Unknown',
+            storeColor: store?.color ?? '#888',
+            storeLocation: store?.location ?? null,
+            price: p.price,
+            quantity: p.quantity,
+            sizeValue: p.sizeValue,
+            sizeUnit: p.sizeUnit,
+            notes: p.notes ?? null,
+            isSale: p.isSale,
+            saleExpiresAt: p.saleExpiresAt ?? null,
+            isOnline: p.isOnline ?? false,
+            barcode: p.barcode ?? null,
+            dateChecked: p.dateChecked,
+            createdAt: p.createdAt,
+            ...computePrice(p),
+          } as ComputedPrice
+        })
+        .sort((a, b) => new Date(b.dateChecked).getTime() - new Date(a.dateChecked).getTime())
+      setHistoryPrices(all)
+    } catch (err) {
+      console.error('Failed to load price history:', err)
+    }
+  }
+
+  async function reactivateSale(p: ComputedPrice) {
+    setReactivatingId(p.id)
+    try {
+      // Create a new price entry with the same details but a new sale expiry
+      const tomorrow = new Date()
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      tomorrow.setHours(23, 59, 0, 0)
+
+      await localAddPrice(product!.id, {
+        storeId: p.storeId,
+        price: p.price,
+        quantity: p.quantity,
+        sizeValue: p.sizeValue,
+        sizeUnit: p.sizeUnit,
+        notes: p.notes,
+        isSale: true,
+        saleExpiresAt: tomorrow.toISOString(),
+        isOnline: p.isOnline,
+        barcode: p.barcode,
+        dateChecked: new Date().toISOString(),
+      })
+
+      toast({
+        title: 'Sale reactivated',
+        description: `New sale entry created with expiry tomorrow`,
+      })
+      await loadHistory()
+      onPricesChanged()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Something went wrong'
+      toast({ variant: 'destructive', title: 'Error', description: msg })
+    } finally {
+      setReactivatingId(null)
+    }
+  }
 
   if (!product) return null
 
@@ -176,10 +270,17 @@ export function ProductDetailDialog({
                 >
                   {addingToList ? (
                     <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                  ) : isOnList ? (
-                    <Check className="mr-1 h-3.5 w-3.5" />
                   ) : (
-                    <ShoppingCart className="mr-1 h-3.5 w-3.5" />
+                    <div className="relative mr-1">
+                      <ShoppingCart
+                        className={`h-3.5 w-3.5 ${
+                          isOnList ? 'text-primary' : 'text-muted-foreground'
+                        }`}
+                      />
+                      {isOnList && (
+                        <Check className="h-2 w-2 text-primary-foreground absolute -bottom-0.5 -right-0.5 bg-primary rounded-full p-px" />
+                      )}
+                    </div>
                   )}
                   {isOnList ? 'On list' : 'Add to list'}
                 </Button>
@@ -204,7 +305,16 @@ export function ProductDetailDialog({
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto scrollbar-thin -mx-1 px-1 space-y-5">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'current' | 'history')} className="flex-1 flex flex-col overflow-hidden">
+            <TabsList className="grid w-full grid-cols-2 mb-2">
+              <TabsTrigger value="current">Current Prices</TabsTrigger>
+              <TabsTrigger value="history">
+                <History className="h-3 w-3 mr-1" />
+                Price History
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="current" className="flex-1 overflow-y-auto scrollbar-thin -mx-1 px-1 space-y-5 mt-0">
             {product.priceCount === 0 ? (
               <div className="text-center py-10 text-sm text-muted-foreground">
                 <Package className="mx-auto mb-2 h-10 w-10 opacity-40" />
@@ -289,6 +399,15 @@ export function ProductDetailDialog({
                                 style={{ backgroundColor: best.storeColor }}
                               />
                               <span className="font-semibold">{best.storeName}</span>
+                              {best.isOnline && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[9px] h-4 px-1 py-0 border-sky-500/60 text-sky-700 dark:text-sky-300 dark:border-sky-700/60 bg-sky-100 dark:bg-sky-900/40"
+                                >
+                                  <Globe className="h-2 w-2 mr-0.5" />
+                                  Online
+                                </Badge>
+                              )}
                               <Badge
                                 className={
                                   bestIsSale
@@ -411,6 +530,15 @@ export function ProductDetailDialog({
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-medium text-sm">{p.storeName}</span>
+                                  {p.isOnline && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[9px] h-4 px-1 py-0 border-sky-500/60 text-sky-700 dark:text-sky-300 dark:border-sky-700/60 bg-sky-100 dark:bg-sky-900/40"
+                                    >
+                                      <Globe className="h-2 w-2 mr-0.5" />
+                                      Online
+                                    </Badge>
+                                  )}
                                   {pIsSale && (
                                     <Badge
                                       variant="outline"
@@ -509,7 +637,113 @@ export function ProductDetailDialog({
                 )
               })
             )}
-          </div>
+            </TabsContent>
+
+            {/* Price History tab */}
+            <TabsContent value="history" className="flex-1 overflow-y-auto scrollbar-thin -mx-1 px-1 space-y-4 mt-0">
+              {historyPrices.length === 0 ? (
+                <div className="text-center py-10 text-sm text-muted-foreground">
+                  <History className="mx-auto mb-2 h-10 w-10 opacity-40" />
+                  <p>No price history yet.</p>
+                </div>
+              ) : (
+                (() => {
+                  // Group by store, then by variant (quantity, sizeValue, sizeUnit)
+                  const byStore = new Map<string, { storeName: string; storeColor: string; variants: Map<string, ComputedPrice[]> }>()
+                  for (const p of historyPrices) {
+                    if (!byStore.has(p.storeId)) {
+                      byStore.set(p.storeId, { storeName: p.storeName, storeColor: p.storeColor, variants: new Map() })
+                    }
+                    const storeGroup = byStore.get(p.storeId)!
+                    const variantKey = `${p.quantity}×${p.sizeValue}${p.sizeUnit}`
+                    if (!storeGroup.variants.has(variantKey)) {
+                      storeGroup.variants.set(variantKey, [])
+                    }
+                    storeGroup.variants.get(variantKey)!.push(p)
+                  }
+
+                  return Array.from(byStore.entries()).map(([storeId, storeGroup]) => (
+                    <div key={storeId} className="rounded-lg border overflow-hidden">
+                      <div
+                        className="flex items-center gap-2 px-3 py-1.5 border-b"
+                        style={{ backgroundColor: `color-mix(in srgb, ${storeGroup.storeColor} 12%, transparent)` }}
+                      >
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: storeGroup.storeColor }} />
+                        <span className="font-semibold text-sm">{storeGroup.storeName}</span>
+                      </div>
+                      <div className="divide-y">
+                        {Array.from(storeGroup.variants.entries()).map(([variantKey, entries]) => {
+                          const first = entries[0]
+                          return (
+                            <div key={variantKey} className="p-2.5">
+                              <div className="text-[10px] text-muted-foreground font-medium mb-1.5">
+                                {formatNumber(first.quantity)} × {formatSize(first.sizeValue, first.sizeUnit)}
+                              </div>
+                              <ul className="space-y-1">
+                                {entries.map((p) => {
+                                  const expired = p.isSale && isSaleExpired(p.saleExpiresAt)
+                                  return (
+                                    <li key={p.id} className="flex items-center gap-2 text-xs">
+                                      <span className="font-mono font-semibold">{formatCurrency(p.price)}</span>
+                                      <span className="text-muted-foreground">
+                                        {formatPricePerUnitSmart(p.pricePerBaseUnit, p.category).text}
+                                      </span>
+                                      {p.isSale && (
+                                        <Badge
+                                          variant="outline"
+                                          className={`text-[8px] h-3.5 px-1 py-0 ${
+                                            expired
+                                              ? 'border-muted-foreground/30 text-muted-foreground bg-muted/30'
+                                              : 'border-amber-500/60 text-amber-700 dark:text-amber-300 dark:border-amber-700/60 bg-amber-100 dark:bg-amber-900/40'
+                                          }`}
+                                        >
+                                          <Tag className="h-2 w-2 mr-0.5" />
+                                          {expired ? 'Sale expired' : 'Sale'}
+                                        </Badge>
+                                      )}
+                                      {p.isOnline && (
+                                        <Badge
+                                          variant="outline"
+                                          className="text-[8px] h-3.5 px-1 py-0 border-sky-500/60 text-sky-700 dark:text-sky-300 dark:border-sky-700/60 bg-sky-100 dark:bg-sky-900/40"
+                                        >
+                                          <Globe className="h-2 w-2 mr-0.5" />
+                                          Online
+                                        </Badge>
+                                      )}
+                                      <span className="text-muted-foreground/60 text-[10px]">
+                                        {formatRelativeDate(p.dateChecked)}
+                                      </span>
+                                      {expired && (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-5 px-1.5 text-[10px] ml-auto"
+                                          onClick={() => reactivateSale(p)}
+                                          disabled={reactivatingId === p.id}
+                                        >
+                                          {reactivatingId === p.id ? (
+                                            <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                          ) : (
+                                            'Reactivate'
+                                          )}
+                                        </Button>
+                                      )}
+                                    </li>
+                                  )
+                                })}
+                              </ul>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))
+                })()
+              )}
+            </TabsContent>
+          </Tabs>
+
+          <div className="flex-1 overflow-hidden" />
 
           {product.priceCount > 0 && (
             <>

@@ -12,6 +12,7 @@ import {
   ShoppingCart,
   Check,
   Loader2,
+  Globe,
 } from 'lucide-react'
 
 import { Card } from '@/components/ui/card'
@@ -170,10 +171,17 @@ export function ProductCard({
             >
               {adding ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : isOnList ? (
-                <Check className="h-3.5 w-3.5 text-primary" />
               ) : (
-                <ShoppingCart className="h-3.5 w-3.5" />
+                <div className="relative">
+                  <ShoppingCart
+                    className={`h-3.5 w-3.5 ${
+                      isOnList ? 'text-primary' : 'text-muted-foreground'
+                    }`}
+                  />
+                  {isOnList && (
+                    <Check className="h-2 w-2 text-primary-foreground absolute -bottom-0.5 -right-0.5 bg-primary rounded-full p-px" />
+                  )}
+                </div>
               )}
             </Button>
           )}
@@ -248,6 +256,12 @@ export function ProductCard({
                   style={{ backgroundColor: overallBest.storeColor }}
                 />
                 <span className="font-medium">{overallBest.storeName}</span>
+                {overallBest.isOnline && (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1 py-0.5 rounded-full bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300">
+                    <Globe className="h-2 w-2" />
+                    Online
+                  </span>
+                )}
                 <span className="text-muted-foreground">
                   · {formatCurrency(overallBest.price)} for {overallBest.quantity}
                 </span>

@@ -16,6 +16,7 @@ import {
   Flame,
   Package,
   X,
+  Globe,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -425,6 +426,15 @@ export function ShoppingListDialog({ open, onOpenChange, onCountChange }: Props)
                                 >
                                   <Tag className="h-2 w-2 mr-0.5" />
                                   Sale
+                                </Badge>
+                              )}
+                              {best.price.isOnline && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[9px] h-4 px-1 py-0 border-sky-500/60 text-sky-700 dark:text-sky-300 dark:border-sky-700/60 bg-sky-100 dark:bg-sky-900/40"
+                                >
+                                  <Globe className="h-2 w-2 mr-0.5" />
+                                  Online
                                 </Badge>
                               )}
                             </div>

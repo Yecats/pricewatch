@@ -14,6 +14,7 @@ import {
   Keyboard,
   CheckCircle2,
   X,
+  Search,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -28,11 +29,14 @@ import {
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
 import { lookupBarcode, type BarcodeLookupResult } from '@/lib/barcode'
+import { localDb } from '@/lib/local-db'
 
 interface Props {
   open: boolean
   onOpenChange: (v: boolean) => void
   onDetected: (result: BarcodeLookupResult) => void
+  /** Called when the user selects an existing product from the search results */
+  onProductSelected?: (productId: string) => void
   /** Optional title override. Default: "Scan barcode" */
   title?: string
   /** Optional description. */
@@ -45,6 +49,7 @@ export function BarcodeScannerDialog({
   open,
   onOpenChange,
   onDetected,
+  onProductSelected,
   title = 'Scan barcode',
   description = 'Point your camera at the product barcode. We will look it up in the OpenFoodFacts database and pre-fill the form.',
 }: Props) {
@@ -59,6 +64,9 @@ export function BarcodeScannerDialog({
   const [manualCode, setManualCode] = useState('')
   const [lastDetected, setLastDetected] = useState<string | null>(null)
   const [cameraLabel, setCameraLabel] = useState<string | null>(null)
+  // Search-by-name state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<Array<{ id: string; name: string; brand?: string | null; category?: string | null }>>([])
 
   const stop = useCallback(() => {
     if (controlsRef.current) {
@@ -89,13 +97,14 @@ export function BarcodeScannerDialog({
       // Schedule state reset on next tick to avoid cascading renders.
       // The camera is stopped synchronously; UI state can be reset lazily.
       detectedRef.current = false
-      // Use a flag to defer reset until after the effect body completes.
       const reset = () => {
         setPhase('idle')
         setError(null)
         setManualCode('')
         setLastDetected(null)
         setCameraLabel(null)
+        setSearchQuery('')
+        setSearchResults([])
       }
       queueMicrotask(reset)
     }
@@ -402,6 +411,65 @@ export function BarcodeScannerDialog({
               <Button type="button" className="w-full" onClick={() => void startCamera()}>
                 <Camera className="h-4 w-4 mr-2" /> Start camera
               </Button>
+            )}
+          </div>
+        )}
+
+        {/* Search by name — always visible */}
+        {onProductSelected && phase !== 'looking-up' && (
+          <div className="space-y-2 border-t pt-3">
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Search your products
+            </div>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={async (e) => {
+                  const q = e.target.value
+                  setSearchQuery(q)
+                  if (q.trim().length >= 1) {
+                    const all = await localDb.products.toArray()
+                    const filtered = all
+                      .filter((p) => !p.deletedAt)
+                      .filter((p) =>
+                        p.name.toLowerCase().includes(q.toLowerCase()) ||
+                        (p.brand && p.brand.toLowerCase().includes(q.toLowerCase()))
+                      )
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .slice(0, 5)
+                    setSearchResults(filtered)
+                  } else {
+                    setSearchResults([])
+                  }
+                }}
+                placeholder="Type a product name..."
+                className="pl-8 text-sm"
+              />
+            </div>
+            {searchResults.length > 0 && (
+              <div className="rounded-lg border divide-y max-h-40 overflow-y-auto scrollbar-thin">
+                {searchResults.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => {
+                      onProductSelected(p.id)
+                      onOpenChange(false)
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-accent transition-colors flex items-center gap-2"
+                  >
+                    <Search className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <span className="text-sm font-medium truncate">{p.name}</span>
+                    {p.brand && (
+                      <span className="text-[10px] text-muted-foreground">· {p.brand}</span>
+                    )}
+                    {p.category && (
+                      <span className="text-[10px] text-muted-foreground/60 ml-auto">{p.category}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         )}

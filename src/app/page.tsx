@@ -749,6 +749,81 @@ export default function Home() {
         open={globalScannerOpen}
         onOpenChange={setGlobalScannerOpen}
         onDetected={(result) => void handleGlobalScan(result)}
+        onProductSelected={(productId) => {
+          // Find the product in local DB and open detail dialog
+          void (async () => {
+            const localProduct = await localDb.products.get(productId)
+            if (localProduct) {
+              // Build a minimal Product object for the detail dialog
+              const { computePrice, isSaleExpired } = await import('@/lib/units')
+              const [localPrices, localStores] = await Promise.all([
+                localDb.priceEntries.where('productId').equals(productId).toArray(),
+                localDb.stores.toArray(),
+              ])
+              const storeMap = new Map(localStores.filter((s) => !s.deletedAt).map((s) => [s.id, s]))
+              const visiblePrices = localPrices
+                .filter((p) => !p.deletedAt)
+                .filter((p) => !p.isSale || !isSaleExpired(p.saleExpiresAt))
+
+              const prices = visiblePrices.map((p) => {
+                const store = storeMap.get(p.storeId)
+                return {
+                  id: p.id,
+                  storeId: p.storeId,
+                  storeName: store?.name ?? 'Unknown',
+                  storeColor: store?.color ?? '#888',
+                  storeLocation: store?.location ?? null,
+                  price: p.price,
+                  quantity: p.quantity,
+                  sizeValue: p.sizeValue,
+                  sizeUnit: p.sizeUnit,
+                  notes: p.notes ?? null,
+                  isSale: p.isSale,
+                  saleExpiresAt: p.saleExpiresAt ?? null,
+                  isOnline: p.isOnline ?? false,
+                  barcode: p.barcode ?? null,
+                  dateChecked: p.dateChecked,
+                  createdAt: p.createdAt,
+                  ...computePrice(p),
+                }
+              })
+
+              const byCategory: Record<string, typeof prices> = {}
+              for (const c of prices) {
+                if (!byCategory[c.category]) byCategory[c.category] = []
+                byCategory[c.category].push(c)
+              }
+              for (const k of Object.keys(byCategory)) {
+                byCategory[k].sort((a, b) => a.pricePerBaseUnit - b.pricePerBaseUnit)
+              }
+              const bestPerCategory: Record<string, typeof prices[0] | undefined> = {}
+              for (const [cat, entries] of Object.entries(byCategory)) {
+                bestPerCategory[cat] = entries[0]
+              }
+              const allPrices = prices.map((c) => c.pricePerBaseUnit)
+              const lowestPricePerUnit = allPrices.length ? Math.min(...allPrices) : null
+              const storeCount = new Set(prices.map((pr) => pr.storeId)).size
+
+              setSelectedProduct({
+                id: localProduct.id,
+                name: localProduct.name,
+                brand: localProduct.brand,
+                category: localProduct.category,
+                notes: localProduct.notes,
+                imageUrl: localProduct.imageUrl,
+                barcode: localProduct.barcode,
+                createdAt: localProduct.createdAt,
+                updatedAt: localProduct.updatedAt,
+                prices,
+                byCategory,
+                bestPerCategory,
+                lowestPricePerUnit,
+                storeCount,
+                priceCount: prices.length,
+              })
+            }
+          })()
+        }}
         title="Scan product barcode"
         description="Point your camera at any product barcode. We'll look it up on OpenFoodFacts and either open the existing product (to add a variant price) or pre-fill a new product form."
       />
