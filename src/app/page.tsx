@@ -781,6 +781,11 @@ export default function Home() {
         initialLookup={pendingLookup}
         onLookupConsumed={() => setPendingLookup(null)}
         onSaved={handleProductSaved}
+        onOpenScanner={() => {
+          setEditingProduct(null)
+          setPendingLookup(null)
+          setGlobalScannerOpen(true)
+        }}
         existingCategories={Array.from(
           new Set(
             products

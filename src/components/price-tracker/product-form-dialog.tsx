@@ -57,6 +57,9 @@ interface Props {
   onLookupConsumed?: () => void
   /** Existing categories from the user's products — shown at the top of the dropdown */
   existingCategories?: string[]
+  /** Called when the user clicks "Scan barcode" — parent should close this form
+   *  and open the global scanner dialog (same one as the header Scan button). */
+  onOpenScanner?: () => void
 }
 
 export function ProductFormDialog({
@@ -68,6 +71,7 @@ export function ProductFormDialog({
   initialLookup,
   onLookupConsumed,
   existingCategories = [],
+  onOpenScanner,
 }: Props) {
   const { toast } = useToast()
   const [submitting, setSubmitting] = useState(false)
@@ -208,7 +212,16 @@ export function ProductFormDialog({
                   type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => setScannerOpen(true)}
+                  onClick={() => {
+                    if (onOpenScanner) {
+                      // Close this form and let the parent open the global scanner
+                      onOpenChange(false)
+                      onOpenScanner()
+                    } else {
+                      // Fallback: open the local scanner (used when not wired to page.tsx)
+                      setScannerOpen(true)
+                    }
+                  }}
                 >
                   <ScanLine className="h-3.5 w-3.5 mr-1.5" />
                   Scan barcode
