@@ -434,9 +434,10 @@ export function BarcodeScannerDialog({
                 onChange={async (e) => {
                   const q = e.target.value
                   setSearchQuery(q)
-                  if (q.trim().length < 2) {
+                  if (q.trim().length < 3) {
                     setLocalResults([])
                     setOffResults([])
+                    setSearching(false)
                     return
                   }
                   // Search local products (instant)
@@ -547,6 +548,13 @@ export function BarcodeScannerDialog({
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* No results message */}
+            {searchQuery.trim().length >= 3 && !searching && localResults.length === 0 && offResults.length === 0 && (
+              <div className="text-xs text-muted-foreground italic py-1">
+                No results found. Try a different search term, or scan the barcode instead.
               </div>
             )}
           </div>

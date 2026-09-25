@@ -232,9 +232,12 @@ export async function lookupBarcode(barcode: string): Promise<BarcodeLookupResul
 /**
  * Search OpenFoodFacts by product name. Returns up to 10 results.
  * Uses the OFF search API: https://world.openfoodfacts.org/cgi/search.pl
+ *
+ * Note: OFF rate-limits anonymous users and may return 503 during peak times.
+ * We add a User-Agent header (as they request) and handle 503 gracefully.
  */
 export async function searchOpenFoodFacts(query: string): Promise<BarcodeLookupResult[]> {
-  if (!query.trim()) return []
+  if (!query.trim() || query.trim().length < 3) return []
   try {
     const params = new URLSearchParams({
       search_terms: query.trim(),
@@ -247,9 +250,17 @@ export async function searchOpenFoodFacts(query: string): Promise<BarcodeLookupR
     })
     const res = await fetch(
       `https://world.openfoodfacts.org/cgi/search.pl?${params.toString()}`,
-      { headers: { Accept: 'application/json' } }
+      {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'Pricewatch/1.0 (local price tracker)',
+        },
+      }
     )
-    if (!res.ok) return []
+    if (!res.ok) {
+      console.warn(`[searchOpenFoodFacts] OFF returned ${res.status} for query "${query}"`)
+      return []
+    }
     const data = await res.json()
     if (!data.products || !Array.isArray(data.products)) return []
 
