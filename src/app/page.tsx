@@ -102,6 +102,22 @@ export default function Home() {
     return () => { c = true }
   }, [])
 
+  // After products reload (e.g. after editing in ProductFormDialog),
+  // refresh the open ProductDetailDialog so it shows updated data.
+  const selectedProductRef = useRef<Product | null>(null)
+  useEffect(() => {
+    selectedProductRef.current = selectedProduct
+  })
+  useEffect(() => {
+    const sp = selectedProductRef.current
+    if (sp) {
+      const updated = products.find(p => p.id === sp.id)
+      if (updated && updated !== sp) {
+        setSelectedProduct(updated)
+      }
+    }
+  }, [products])
+
   const categories = useMemo(() => {
     const set = new Set<string>()
     const source = activeTab === 'groups' ? groups : products
@@ -316,30 +332,11 @@ export default function Home() {
               <span className="sm:hidden">Add</span>
             </Button>
           ) : (
-            <div className="flex items-center gap-1.5">
-              {selectMode && selectedProductIds.size > 0 && (
-                <Button size="sm" onClick={openCreateGroupFromSelected}>
-                  <Layers className="mr-1 h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Create group ({selectedProductIds.size})</span>
-                  <span className="sm:hidden">Group ({selectedProductIds.size})</span>
-                </Button>
-              )}
-              {selectMode ? (
-                <Button size="sm" variant="outline" onClick={clearSelection}>
-                  <span>Cancel</span>
-                </Button>
-              ) : (
-                <Button size="sm" variant="outline" onClick={() => setSelectMode(true)} disabled={products.length === 0}>
-                  <Check className="mr-1 h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Select</span>
-                </Button>
-              )}
-              <Button size="sm" onClick={() => { setEditingProduct(null); setPendingLookup(null); setProductFormOpen(true) }}>
-                <Plus className="mr-1 h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Add product</span>
-                <span className="sm:hidden">Add</span>
-              </Button>
-            </div>
+            <Button size="sm" onClick={() => { setEditingProduct(null); setPendingLookup(null); setProductFormOpen(true) }}>
+              <Plus className="mr-1 h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Add product</span>
+              <span className="sm:hidden">Add</span>
+            </Button>
           )}
           <ThemeToggle />
         </div>
@@ -435,29 +432,46 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="products" className="mt-4">
-            {selectMode && products.length > 0 && (
-              <div className="mb-3 flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-                <Check className="h-3.5 w-3.5" />
-                <span>
-                  {selectedProductIds.size === 0
-                    ? 'Tap products to select them.'
-                    : `${selectedProductIds.size} selected.`}{' '}
-                  Use "Create group" to combine them into a comparison group.
-                </span>
-                {filteredProducts.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (selectedProductIds.size === filteredProducts.length) {
-                        setSelectedProductIds(new Set())
-                      } else {
-                        setSelectedProductIds(new Set(filteredProducts.map(p => p.id)))
-                      }
-                    }}
-                    className="ml-auto text-primary hover:underline font-medium"
-                  >
-                    {selectedProductIds.size === filteredProducts.length ? 'Clear all' : 'Select all'}
-                  </button>
+            {/* Select toolbar — inside Products tab, not in the global header */}
+            {products.length > 0 && !loading && !productsLoading && (
+              <div className="mb-3 flex items-center gap-2 flex-wrap">
+                {selectMode ? (
+                  <>
+                    <Button size="sm" variant="outline" onClick={clearSelection}>Cancel</Button>
+                    <span className="text-xs text-muted-foreground">
+                      {selectedProductIds.size === 0
+                        ? 'Tap products to select'
+                        : `${selectedProductIds.size} selected`}
+                    </span>
+                    {filteredProducts.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (selectedProductIds.size === filteredProducts.length) {
+                            setSelectedProductIds(new Set())
+                          } else {
+                            setSelectedProductIds(new Set(filteredProducts.map(p => p.id)))
+                          }
+                        }}
+                        className="text-primary hover:underline text-xs font-medium ml-1"
+                      >
+                        {selectedProductIds.size === filteredProducts.length ? 'Clear all' : 'Select all'}
+                      </button>
+                    )}
+                    {selectedProductIds.size > 0 && (
+                      <Button size="sm" onClick={openCreateGroupFromSelected} className="ml-auto">
+                        <Layers className="mr-1 h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">Create group ({selectedProductIds.size})</span>
+                        <span className="sm:hidden">Group ({selectedProductIds.size})</span>
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <Button size="sm" variant="outline" onClick={() => setSelectMode(true)} className="ml-auto">
+                    <Check className="mr-1 h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Select products</span>
+                    <span className="sm:hidden">Select</span>
+                  </Button>
                 )}
               </div>
             )}
@@ -508,7 +522,7 @@ export default function Home() {
         product={selectedProduct}
         stores={stores}
         onPricesChanged={() => { void reloadProducts(); void reloadGroups() }}
-        onEditDetails={(p) => { setSelectedProduct(null); openEditProduct(p) }}
+        onEditDetails={(p) => openEditProduct(p)}
       />
       <ProductFormDialog open={productFormOpen} onOpenChange={setProductFormOpen} initial={editingProduct}
         initialLookup={pendingLookup} onLookupConsumed={() => setPendingLookup(null)} onSaved={handleProductSaved}

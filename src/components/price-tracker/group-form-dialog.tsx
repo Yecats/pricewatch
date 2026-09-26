@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Loader2, Layers, Check } from 'lucide-react'
+import { Loader2, Layers } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -12,6 +12,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { CategoryCombobox } from './category-combobox'
+import { ProductMultiPicker } from './product-multi-picker'
 import { useToast } from '@/hooks/use-toast'
 import { localAddGroup } from '@/hooks/use-local-data'
 import type { Product } from './types'
@@ -122,21 +123,23 @@ export function GroupFormDialog({ open, onOpenChange, products, initialProductId
               </FormItem>
             )} />
 
-            {/* Product picker */}
+            {/* Product picker (shared component with search) */}
             {products.length > 0 && (
               <div>
                 <FormLabel>Add products to this group (optional)</FormLabel>
-                <div className="mt-1.5 max-h-40 overflow-y-auto scrollbar-thin rounded-lg border divide-y">
-                  {products.map(p => (
-                    <button key={p.id} type="button" onClick={() => toggleProduct(p.id)}
-                      className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${selectedProductIds.has(p.id) ? 'bg-primary/5' : 'hover:bg-accent'}`}>
-                      <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${selectedProductIds.has(p.id) ? 'bg-primary border-primary' : 'border-input'}`}>
-                        {selectedProductIds.has(p.id) && <Check className="h-3 w-3 text-primary-foreground" />}
-                      </div>
-                      <span className="text-sm font-medium truncate">{p.name}</span>
-                      {p.brand && <span className="text-[10px] text-muted-foreground">· {p.brand}</span>}
-                    </button>
-                  ))}
+                <div className="mt-1.5">
+                  <ProductMultiPicker
+                    items={products.map(p => ({
+                      id: p.id, name: p.name,
+                      brand: p.brand ?? null,
+                      category: p.category ?? null,
+                      barcode: p.barcode ?? null,
+                    }))}
+                    selectedIds={selectedProductIds}
+                    onToggle={toggleProduct}
+                    emptyMessage="No products available. Add products from the Products tab first."
+                    maxHeight="max-h-40"
+                  />
                 </div>
               </div>
             )}

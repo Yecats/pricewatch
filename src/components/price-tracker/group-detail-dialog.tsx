@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import {
-  Loader2, Plus, Pencil, Trash2, Trophy, Store as StoreIcon, Calendar,
+  Loader2, Plus, Pencil, Trash2, Trophy, TrendingDown, Store as StoreIcon, Calendar,
   StickyNote, Package, Tag, Clock, Flame, ShoppingCart, Check, Globe,
   Copy, History, Layers,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -23,6 +22,7 @@ import { localDb } from '@/lib/local-db'
 import { localAddPrice, localDeletePrice, localAddProductToGroup } from '@/hooks/use-local-data'
 import type { ComputedPrice, ProductGroup, GroupProduct, Store } from './types'
 import { PriceFormDialog } from './price-form-dialog'
+import { ProductMultiPicker, type ProductMultiPickerItem } from './product-multi-picker'
 
 interface Props {
   open: boolean
@@ -46,8 +46,7 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
   const [reactivatingId, setReactivatingId] = useState<string | null>(null)
   const [currentGroup, setCurrentGroup] = useState<ProductGroup | null>(group)
   const [addProductOpen, setAddProductOpen] = useState(false)
-  const [addProductQuery, setAddProductQuery] = useState('')
-  const [addableProducts, setAddableProducts] = useState<Array<{ id: string; name: string; brand?: string | null; category?: string | null; barcode?: string | null; groupCount: number }>>([])
+  const [addableProducts, setAddableProducts] = useState<ProductMultiPickerItem[]>([])
   const [pendingAddIds, setPendingAddIds] = useState<Set<string>>(new Set())
   const [addingProducts, setAddingProducts] = useState(false)
 
@@ -61,7 +60,7 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
     if (!open) {
       setPriceFormOpen(false); setEditingPrice(null); setForkingPrice(null)
       setDeletingId(null); setActiveTab('current'); setHistoryPrices([])
-      setAddProductOpen(false); setAddProductQuery(''); setAddableProducts([]); setPendingAddIds(new Set())
+      setAddProductOpen(false); setAddableProducts([]); setPendingAddIds(new Set())
     }
   }, [open])
 
@@ -83,14 +82,17 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
           if (l.groupId === group.id) continue
           groupCountByProduct.set(l.productId, (groupCountByProduct.get(l.productId) ?? 0) + 1)
         }
-        const candidates = allProducts
+        const candidates: ProductMultiPickerItem[] = allProducts
           .filter(p => !p.deletedAt && !inThisGroup.has(p.id))
           .sort((a, b) => a.name.localeCompare(b.name))
-          .map(p => ({
-            id: p.id, name: p.name, brand: p.brand ?? null,
-            category: p.category ?? null, barcode: p.barcode ?? null,
-            groupCount: groupCountByProduct.get(p.id) ?? 0,
-          }))
+          .map(p => {
+            const gc = groupCountByProduct.get(p.id) ?? 0
+            return {
+              id: p.id, name: p.name, brand: p.brand ?? null,
+              category: p.category ?? null, barcode: p.barcode ?? null,
+              hint: gc > 0 ? `in ${gc} other group${gc === 1 ? '' : 's'}` : undefined,
+            }
+          })
         if (!cancelled) setAddableProducts(candidates)
       } catch (err) { console.error('Failed to load addable products:', err) }
     })()
@@ -167,11 +169,33 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
     } finally { setAddingProducts(false) }
   }
 
+  function togglePendingAdd(id: string) {
+    setPendingAddIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
   if (!currentGroup) return null
 
   const products = currentGroup.products ?? []
   const allPrices = products.flatMap(p => p.prices)
-  const overallBest = allPrices.length ? [...allPrices].sort((a, b) => a.pricePerBaseUnit - b.pricePerBaseUnit)[0] : null
+  const sortedPrices = [...allPrices].sort((a, b) => a.pricePerBaseUnit - b.pricePerBaseUnit)
+  const overallBest = sortedPrices[0] ?? null
+  const runnerUp = sortedPrices[1] ?? null
+  const savingsPercent = (overallBest && runnerUp)
+    ? (1 - overallBest.pricePerBaseUnit / runnerUp.pricePerBaseUnit) * 100
+    : null
+  const bestProduct = overallBest ? products.find(p => p.productId === overallBest.productId) : null
+  const overallBestIsSale = overallBest?.isSale === true
+  const bestCountdown = overallBestIsSale ? formatSaleCountdown(overallBest.saleExpiresAt) : null
+  const bestSeverity = overallBestIsSale ? saleCountdownSeverity(overallBest.saleExpiresAt) : 'normal'
+  const BestSeverityIcon = bestSeverity === 'urgent' ? Flame : Clock
+  const bestSeverityTextClass = bestSeverity === 'urgent' ? 'text-red-600 dark:text-red-400'
+    : bestSeverity === 'warning' ? 'text-amber-600 dark:text-amber-400'
+    : 'text-muted-foreground'
 
   return (
     <>
@@ -217,6 +241,61 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
             </div>
           )}
 
+          {/* Winner card — always visible at top so you don't have to scroll */}
+          {overallBest && (
+            <div className={`relative overflow-hidden rounded-xl border-2 p-3.5 ${
+              overallBestIsSale
+                ? 'border-amber-400/70 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-950/30'
+                : 'border-primary/60 bg-primary/5'
+            }`}>
+              <div className="flex items-start gap-3">
+                <div className={`h-10 w-10 rounded-full grid place-items-center shrink-0 shadow-sm ${
+                  overallBestIsSale ? 'bg-amber-500 text-white' : 'bg-primary text-primary-foreground'
+                }`}>
+                  {overallBestIsSale ? <Tag className="h-5 w-5" /> : <Trophy className="h-5 w-5" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Badge className={
+                      overallBestIsSale
+                        ? 'bg-amber-500 hover:bg-amber-500 text-white text-[10px] py-0 h-4.5'
+                        : 'bg-primary/90 hover:bg-primary/90 text-primary-foreground text-[10px] py-0 h-4.5'
+                    }>
+                      {overallBestIsSale ? 'Sale — best value' : 'Best value'}
+                    </Badge>
+                    {bestProduct && (
+                      <span className="font-semibold text-sm truncate">{bestProduct.name}</span>
+                    )}
+                  </div>
+                  <div className="mt-1 flex items-baseline gap-3 flex-wrap">
+                    <span className="text-xl font-bold tracking-tight">{formatCurrency(overallBest.price)}</span>
+                    <span className={`text-sm font-medium ${
+                      overallBestIsSale ? 'text-amber-700 dark:text-amber-300' : 'text-primary'
+                    }`}>
+                      {formatPricePerUnitSmart(overallBest.pricePerBaseUnit, overallBest.category).text}
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: overallBest.storeColor }} />
+                      {overallBest.storeName}
+                    </span>
+                    {savingsPercent !== null && savingsPercent > 0 && (
+                      <span className="text-xs text-muted-foreground inline-flex items-center gap-0.5">
+                        <TrendingDown className="h-3 w-3" />
+                        saves {savingsPercent.toFixed(0)}% vs next best
+                      </span>
+                    )}
+                  </div>
+                  {overallBestIsSale && bestCountdown && (
+                    <div className={`mt-1.5 inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 ${bestSeverityTextClass}`}>
+                      <BestSeverityIcon className="h-3 w-3" />
+                      {bestCountdown}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'current' | 'history')} className="flex-1 flex flex-col overflow-hidden">
             <TabsList className="grid w-full grid-cols-2 mb-2">
               <TabsTrigger value="current">Current Prices</TabsTrigger>
@@ -242,7 +321,7 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
                     <div className="divide-y">
                       {product.prices
                         .sort((a, b) => a.pricePerBaseUnit - b.pricePerBaseUnit)
-                        .map((p, idx) => {
+                        .map((p) => {
                           const isBest = overallBest?.id === p.id
                           const isSale = p.isSale
                           const expired = isSale && isSaleExpired(p.saleExpiresAt)
@@ -353,48 +432,21 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
         onSaved={() => { onPricesChanged(); void loadHistory() }}
       />
 
-      {/* Add existing products to this group */}
+      {/* Add existing products to this group (shared picker component) */}
       <Dialog open={addProductOpen} onOpenChange={setAddProductOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><Layers className="h-5 w-5 text-primary" />Add products to {currentGroup.name}</DialogTitle>
             <DialogDescription>Pick existing products from your catalog to compare inside this group.</DialogDescription>
           </DialogHeader>
-          <Input value={addProductQuery} onChange={e => setAddProductQuery(e.target.value)} placeholder="Search products..." className="mb-2" />
-          <div className="max-h-72 overflow-y-auto scrollbar-thin rounded-lg border divide-y">
-            {addableProducts.length === 0 ? (
-              <div className="p-4 text-center text-xs text-muted-foreground">No more products to add. Create new ones from the Products tab.</div>
-            ) : (
-              (() => {
-                const q = addProductQuery.trim().toLowerCase()
-                const filtered = q
-                  ? addableProducts.filter(p => [p.name, p.brand, p.category, p.barcode].filter(Boolean).join(' ').toLowerCase().includes(q))
-                  : addableProducts
-                if (filtered.length === 0) return <div className="p-4 text-center text-xs text-muted-foreground">No matches for "{addProductQuery}".</div>
-                return filtered.map(p => (
-                  <button key={p.id} type="button"
-                    onClick={() => setPendingAddIds(prev => {
-                      const next = new Set(prev)
-                      if (next.has(p.id)) next.delete(p.id)
-                      else next.add(p.id)
-                      return next
-                    })}
-                    className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${pendingAddIds.has(p.id) ? 'bg-primary/5' : 'hover:bg-accent'}`}>
-                    <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${pendingAddIds.has(p.id) ? 'bg-primary border-primary' : 'border-input'}`}>
-                      {pendingAddIds.has(p.id) && <Check className="h-3 w-3 text-primary-foreground" />}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-medium truncate">{p.name}</div>
-                      <div className="text-[10px] text-muted-foreground truncate">
-                        {p.brand ? `${p.brand} · ` : ''}{p.category ?? 'No category'}
-                        {p.groupCount > 0 ? ` · in ${p.groupCount} other group${p.groupCount === 1 ? '' : 's'}` : ''}
-                      </div>
-                    </div>
-                  </button>
-                ))
-              })()
-            )}
-          </div>
+          <ProductMultiPicker
+            items={addableProducts}
+            selectedIds={pendingAddIds}
+            onToggle={togglePendingAdd}
+            emptyMessage="No more products to add. Create new ones from the Products tab."
+            searchPlaceholder="Search products..."
+            maxHeight="max-h-72"
+          />
           <DialogFooter>
             <div className="text-xs text-muted-foreground mr-auto">{pendingAddIds.size} selected</div>
             <Button type="button" variant="ghost" onClick={() => { setAddProductOpen(false); setPendingAddIds(new Set()) }} disabled={addingProducts}>Cancel</Button>

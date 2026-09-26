@@ -11,9 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Badge } from '@/components/ui/badge'
 import { CategoryCombobox } from './category-combobox'
-import { BarcodeScannerDialog } from './barcode-scanner-dialog'
 import { useToast } from '@/hooks/use-toast'
 import { localAddProduct, localUpdateProduct } from '@/hooks/use-local-data'
 import type { Product, ProductGroup } from './types'
@@ -37,6 +35,7 @@ interface Props {
   initialLookup?: BarcodeLookupResult | null
   onLookupConsumed?: () => void
   onSaved: (p: { id: string; name: string }) => void
+  /** Required when the "Scan barcode" button should be visible — caller owns the scanner instance. */
   onOpenScanner?: () => void
   existingCategories?: string[]
   groups?: ProductGroup[]
@@ -47,7 +46,6 @@ export function ProductFormDialog({
 }: Props) {
   const { toast } = useToast()
   const [submitting, setSubmitting] = useState(false)
-  const [scannerOpen, setScannerOpen] = useState(false)
   const [barcodeSource, setBarcodeSource] = useState<string | null>(null)
   const isEdit = !!initial
 
@@ -103,91 +101,69 @@ export function ProductFormDialog({
     } finally { setSubmitting(false) }
   }
 
-  function applyLookupResult(result: BarcodeLookupResult) {
-    const current = form.getValues()
-    form.reset({
-      ...current,
-      name: result.name || current.name,
-      brand: result.brand ?? current.brand,
-      category: result.category ?? current.category,
-      barcode: result.barcode,
-      imageUrl: result.imageUrl ?? current.imageUrl,
-    })
-    setBarcodeSource(result.source)
-    if (result.name) toast({ title: 'Pre-filled from barcode', description: result.brand ? `${result.name} · ${result.brand}` : result.name })
-  }
-
-  const watchedBarcode = form.watch('barcode')
-
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between gap-2">
-              <span>{isEdit ? 'Edit product' : 'Add product'}</span>
-              {!isEdit && (
-                <Button type="button" size="sm" variant="outline"
-                  onClick={() => { if (onOpenScanner) { onOpenChange(false); onOpenScanner() } else setScannerOpen(true) }}>
-                  <ScanLine className="h-3.5 w-3.5 mr-1.5" />Scan barcode
-                </Button>
-              )}
-            </DialogTitle>
-            <DialogDescription>{isEdit ? 'Update product details.' : 'Add a product — you can link it to a group now or later.'}</DialogDescription>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center justify-between gap-2">
+            <span>{isEdit ? 'Edit product' : 'Add product'}</span>
+            {!isEdit && onOpenScanner && (
+              <Button type="button" size="sm" variant="outline"
+                onClick={() => { onOpenChange(false); onOpenScanner() }}>
+                <ScanLine className="h-3.5 w-3.5 mr-1.5" />Scan barcode
+              </Button>
+            )}
+          </DialogTitle>
+          <DialogDescription>{isEdit ? 'Update product details.' : 'Add a product — you can link it to a group now or later.'}</DialogDescription>
+        </DialogHeader>
 
-          {barcodeSource && (
-            <div className="rounded-lg border bg-primary/5 p-3 flex gap-2">
-              <PackageCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-              <div className="min-w-0 flex-1">
-                <div className="text-[10px] uppercase tracking-wider font-semibold text-primary">
-                  {barcodeSource === 'openfoodfacts' ? 'From OpenFoodFacts' : barcodeSource === 'upcitemdb' ? 'From UPCitemdb' : 'Barcode entered'}
-                </div>
-                <p className="text-xs text-muted-foreground mt-0.5">Brand, barcode, and image will be saved on this product.</p>
+        {barcodeSource && (
+          <div className="rounded-lg border bg-primary/5 p-3 flex gap-2">
+            <PackageCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] uppercase tracking-wider font-semibold text-primary">
+                {barcodeSource === 'openfoodfacts' ? 'From OpenFoodFacts' : barcodeSource === 'upcitemdb' ? 'From UPCitemdb' : 'Barcode entered'}
               </div>
-              <button type="button" onClick={() => setBarcodeSource(null)} className="text-muted-foreground hover:text-foreground shrink-0"><X className="h-3 w-3" /></button>
+              <p className="text-xs text-muted-foreground mt-0.5">Brand, barcode, and image will be saved on this product.</p>
             </div>
-          )}
+            <button type="button" onClick={() => setBarcodeSource(null)} className="text-muted-foreground hover:text-foreground shrink-0"><X className="h-3 w-3" /></button>
+          </div>
+        )}
 
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField control={form.control} name="name" render={({ field }) => (
-                <FormItem><FormLabel>Product name *</FormLabel><FormControl><Input placeholder="e.g. Kraft Mac & Cheese 18-Pack" {...field} /></FormControl><FormMessage /></FormItem>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField control={form.control} name="name" render={({ field }) => (
+              <FormItem><FormLabel>Product name *</FormLabel><FormControl><Input placeholder="e.g. Kraft Mac & Cheese 18-Pack" {...field} /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField control={form.control} name="brand" render={({ field }) => (
+              <FormItem><FormLabel>Brand</FormLabel><FormControl><Input placeholder="Kraft" {...field} /></FormControl><FormMessage /></FormItem>
+            )} />
+            <FormField control={form.control} name="category" render={({ field }) => (
+              <FormItem><FormLabel>Category</FormLabel><FormControl>
+                <CategoryCombobox value={field.value ?? ''} onChange={field.onChange} placeholder="Select category…" existingCategories={existingCategories} />
+              </FormControl><FormMessage /></FormItem>
+            )} />
+            {!isEdit && groups.length > 0 && (
+              <FormField control={form.control} name="groupId" render={({ field }) => (
+                <FormItem><FormLabel>Add to group (optional)</FormLabel>
+                  <FormControl>
+                    <select className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm" {...field}>
+                      <option value="">No group (add later)</option>
+                      {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                  </FormControl><FormMessage /></FormItem>
               )} />
-              <FormField control={form.control} name="brand" render={({ field }) => (
-                <FormItem><FormLabel>Brand</FormLabel><FormControl><Input placeholder="Kraft" {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <FormField control={form.control} name="category" render={({ field }) => (
-                <FormItem><FormLabel>Category</FormLabel><FormControl>
-                  <CategoryCombobox value={field.value ?? ''} onChange={field.onChange} placeholder="Select category…" existingCategories={existingCategories} />
-                </FormControl><FormMessage /></FormItem>
-              )} />
-              {!isEdit && groups.length > 0 && (
-                <FormField control={form.control} name="groupId" render={({ field }) => (
-                  <FormItem><FormLabel>Add to group (optional)</FormLabel>
-                    <FormControl>
-                      <select className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm" {...field}>
-                        <option value="">No group (add later)</option>
-                        {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                      </select>
-                    </FormControl><FormMessage /></FormItem>
-                )} />
-              )}
-              <FormField control={form.control} name="notes" render={({ field }) => (
-                <FormItem><FormLabel>Notes</FormLabel><FormControl><Textarea placeholder="Optional notes" rows={2} {...field} /></FormControl><FormMessage /></FormItem>
-              )} />
-              <DialogFooter>
-                <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>Cancel</Button>
-                <Button type="submit" disabled={submitting}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{isEdit ? 'Save changes' : 'Add product'}</Button>
-              </DialogFooter>
-            </form>
-          </Form>
-        </DialogContent>
-      </Dialog>
-
-      {!onOpenScanner && (
-        <BarcodeScannerDialog open={scannerOpen} onOpenChange={setScannerOpen} onDetected={applyLookupResult} title="Scan product barcode" />
-      )}
-    </>
+            )}
+            <FormField control={form.control} name="notes" render={({ field }) => (
+              <FormItem><FormLabel>Notes</FormLabel><FormControl><Textarea placeholder="Optional notes" rows={2} {...field} /></FormControl><FormMessage /></FormItem>
+            )} />
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>Cancel</Button>
+              <Button type="submit" disabled={submitting}>{submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{isEdit ? 'Save changes' : 'Add product'}</Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
   )
 }

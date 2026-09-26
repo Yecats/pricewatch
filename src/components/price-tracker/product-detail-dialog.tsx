@@ -15,8 +15,6 @@ import {
   Tag,
   Clock,
   Flame,
-  ShoppingCart,
-  Check,
   Copy,
   Globe,
   History,
