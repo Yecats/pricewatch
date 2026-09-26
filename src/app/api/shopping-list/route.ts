@@ -52,9 +52,7 @@ export async function GET() {
       product: {
         id: item.product.id,
         name: item.product.name,
-        brand: item.product.brand,
         category: item.product.category,
-        imageUrl: item.product.imageUrl,
       },
       prices,
     }

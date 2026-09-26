@@ -138,9 +138,7 @@ export function ShoppingListDialog({ open, onOpenChange, onCountChange }: Props)
               product: {
                 id: product?.id ?? item.productId,
                 name: product?.name ?? 'Unknown product',
-                brand: product?.brand ?? null,
                 category: product?.category ?? null,
-                imageUrl: product?.imageUrl ?? null,
               },
               prices: productPrices,
             }
@@ -414,11 +412,6 @@ export function ShoppingListDialog({ open, onOpenChange, onCountChange }: Props)
                               >
                                 {item.product.name}
                               </span>
-                              {item.product.brand && (
-                                <span className="text-[10px] text-muted-foreground">
-                                  · {item.product.brand}
-                                </span>
-                              )}
                               {isSale && (
                                 <Badge
                                   variant="outline"

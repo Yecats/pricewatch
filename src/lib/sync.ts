@@ -162,16 +162,13 @@ export async function sync(): Promise<void> {
         })
       }
 
-      // Upsert products
+      // Upsert products (now just group name + category + notes, no brand/imageUrl/barcode)
       for (const p of serverChanges.products ?? []) {
         await localDb.products.put({
           id: p.id,
           name: p.name,
           category: p.category,
-          brand: p.brand,
           notes: p.notes,
-          imageUrl: p.imageUrl,
-          barcode: p.barcode,
           createdAt: p.createdAt,
           updatedAt: p.updatedAt,
           deletedAt: p.deletedAt ?? null,
@@ -179,7 +176,7 @@ export async function sync(): Promise<void> {
         })
       }
 
-      // Upsert price entries
+      // Upsert price entries (now includes brand, imageUrl)
       for (const p of serverChanges.priceEntries ?? []) {
         await localDb.priceEntries.put({
           id: p.id,
@@ -189,6 +186,8 @@ export async function sync(): Promise<void> {
           quantity: p.quantity,
           sizeValue: p.sizeValue,
           sizeUnit: p.sizeUnit,
+          brand: p.brand ?? null,
+          imageUrl: p.imageUrl ?? null,
           notes: p.notes,
           isSale: p.isSale,
           saleExpiresAt: p.saleExpiresAt,

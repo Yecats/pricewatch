@@ -10,6 +10,8 @@ export interface Store {
   _count?: { prices: number }
 }
 
+// ComputedPrice = a price entry variant with computed fields.
+// Now includes brand, imageUrl, and barcode (moved from Product).
 export interface ComputedPrice {
   id: string
   storeId: string
@@ -20,6 +22,8 @@ export interface ComputedPrice {
   quantity: number
   sizeValue: number
   sizeUnit: string
+  brand?: string | null       // brand of THIS variant
+  imageUrl?: string | null    // image of THIS variant
   notes?: string | null
   isSale: boolean
   saleExpiresAt?: string | null
@@ -33,14 +37,13 @@ export interface ComputedPrice {
   pricePerBaseUnit: number
 }
 
+// Product = a comparison GROUP. No brand, no barcode, no imageUrl.
+// Those live on ComputedPrice (the variant).
 export interface Product {
   id: string
-  name: string
-  brand?: string | null
+  name: string                // group name, e.g. "Mac & Cheese"
   category?: string | null
-  notes?: string | null
-  imageUrl?: string | null
-  barcode?: string | null
+  notes?: string | null       // group-level notes
   createdAt: string
   updatedAt: string
   prices: ComputedPrice[]

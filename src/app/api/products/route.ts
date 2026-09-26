@@ -47,6 +47,8 @@ export async function GET(req: NextRequest) {
       quantity: pr.quantity,
       sizeValue: pr.sizeValue,
       sizeUnit: pr.sizeUnit,
+      brand: pr.brand ?? null,
+      imageUrl: pr.imageUrl ?? null,
       notes: pr.notes,
       isSale: pr.isSale === true,
       saleExpiresAt: pr.saleExpiresAt ?? null,
@@ -92,34 +94,18 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, brand, category, notes, imageUrl, barcode } = body
+    const { name, category, notes } = body
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       return NextResponse.json({ error: 'Product name is required' }, { status: 400 })
     }
 
-    // If a barcode is provided, check if a product with that barcode already exists
-    // so we don't create duplicates. Returns the existing one with a 200 status.
-    if (barcode && typeof barcode === 'string' && barcode.trim()) {
-      const existing = await db.product.findFirst({
-        where: { barcode: barcode.trim() },
-      })
-      if (existing) {
-        return NextResponse.json(existing, { status: 200 })
-      }
-    }
-
+    // Product is now just a group — no brand, imageUrl, or barcode
     const product = await db.product.create({
       data: {
         name: name.trim(),
-        brand: typeof brand === 'string' ? brand.trim() || null : null,
         category: typeof category === 'string' ? category.trim() || null : null,
         notes: typeof notes === 'string' ? notes.trim() || null : null,
-        imageUrl: typeof imageUrl === 'string' ? imageUrl.trim() || null : null,
-        barcode:
-          typeof barcode === 'string' && barcode.trim()
-            ? barcode.trim()
-            : null,
       },
     })
     return NextResponse.json(product, { status: 201 })

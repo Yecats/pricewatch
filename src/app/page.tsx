@@ -174,7 +174,7 @@ export default function Home() {
     return products.filter((p) => {
       if (categoryFilter && p.category !== categoryFilter) return false
       if (!q) return true
-      const haystack = [p.name, p.brand, p.category, p.notes]
+      const haystack = [p.name, p.category, p.notes]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
@@ -284,6 +284,8 @@ export default function Home() {
         isSale: p.isSale,
         saleExpiresAt: p.saleExpiresAt ?? null,
         isOnline: p.isOnline ?? false,
+        brand: p.brand ?? null,
+        imageUrl: p.imageUrl ?? null,
         barcode: p.barcode ?? null,
         dateChecked: p.dateChecked,
         createdAt: p.createdAt,
@@ -310,11 +312,8 @@ export default function Home() {
     setSelectedProduct({
       id: localProduct.id,
       name: localProduct.name,
-      brand: localProduct.brand,
       category: localProduct.category,
       notes: localProduct.notes,
-      imageUrl: localProduct.imageUrl,
-      barcode: localProduct.barcode,
       createdAt: localProduct.createdAt,
       updatedAt: localProduct.updatedAt,
       prices,
@@ -366,20 +365,22 @@ export default function Home() {
 
   async function handleGlobalScan(result: BarcodeLookupResult) {
     try {
-      // Check local DB first — exact barcode match
-      const localProducts = await localDb.products.toArray()
-      const existing = localProducts.find(
-        (p) => p.barcode === result.barcode && !p.deletedAt
+      // Check local DB first — exact barcode match on PriceEntry (not Product)
+      const localPrices = await localDb.priceEntries.toArray()
+      const matchingPrice = localPrices.find(
+        (pr) => pr.barcode === result.barcode && !pr.deletedAt
       )
-      if (existing) {
-        toast({
-          title: 'Existing product found',
-          description: `Opening ${existing.name} — add a new price entry for this variant.`,
-        })
-        await reloadProducts()
-        const full = products.find((p) => p.id === existing.id)
-        if (full) setSelectedProduct(full)
-        return
+      if (matchingPrice) {
+        const existingProduct = await localDb.products.get(matchingPrice.productId)
+        if (existingProduct && !existingProduct.deletedAt) {
+          toast({
+            title: 'Existing product found',
+            description: `Opening ${existingProduct.name} — add a new price entry for this variant.`,
+          })
+          await reloadProducts()
+          await openProductById(existingProduct.id)
+          return
+        }
       }
 
       // No exact barcode match — search for similar products by name.
@@ -387,6 +388,7 @@ export default function Home() {
       // you scan a different barcode (e.g., dinner cups vs boxes) that
       // OpenFoodFacts also calls "Mac & Cheese" — you'd want to add it as
       // a variant of the existing product, not create a duplicate.
+      const localProducts = await localDb.products.toArray()
       const activeProducts = localProducts.filter((p) => !p.deletedAt)
       const lookupName = result.name.toLowerCase()
       const lookupWords = lookupName.split(/\s+/).filter((w) => w.length > 2)
@@ -394,12 +396,10 @@ export default function Home() {
       const matches = activeProducts
         .map((p) => {
           const productName = p.name.toLowerCase()
-          const productBrand = (p.brand ?? '').toLowerCase()
           // Score by how many words from the lookup name appear in the product name
           let score = 0
           for (const word of lookupWords) {
             if (productName.includes(word)) score++
-            if (productBrand.includes(word)) score++
           }
           // Also boost if the product name is a substring of the lookup or vice versa
           if (lookupName.includes(productName) || productName.includes(lookupName)) {
@@ -423,7 +423,6 @@ export default function Home() {
             return {
               id: m.product.id,
               name: m.product.name,
-              brand: m.product.brand,
               category: m.product.category,
               priceCount,
             }
@@ -461,11 +460,8 @@ export default function Home() {
           const freshProduct: Product = {
             id: localProduct.id,
             name: localProduct.name,
-            brand: localProduct.brand,
             category: localProduct.category,
             notes: localProduct.notes,
-            imageUrl: localProduct.imageUrl,
-            barcode: localProduct.barcode,
             createdAt: localProduct.createdAt,
             updatedAt: localProduct.updatedAt,
             prices: [],

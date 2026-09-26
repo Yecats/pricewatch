@@ -240,10 +240,8 @@ export function ProductDetailDialog({
             <div className="min-w-0">
               <DialogTitle className="text-xl leading-tight">{product.name}</DialogTitle>
               <DialogDescription className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                {product.brand && <span className="font-medium text-foreground/80">{product.brand}</span>}
                 {product.category && (
                   <>
-                    <span>·</span>
                     <span>{product.category}</span>
                   </>
                 )}

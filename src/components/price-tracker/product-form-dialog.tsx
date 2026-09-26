@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Loader2, ScanLine, PackageCheck, Image as ImageIcon, X } from 'lucide-react'
+import { Loader2, ScanLine, PackageCheck, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -34,12 +34,8 @@ import type { BarcodeLookupResult } from '@/lib/barcode'
 
 const schema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(120),
-  brand: z.string().trim().max(80).optional().or(z.literal('')),
   category: z.string().trim().max(60).optional().or(z.literal('')),
   notes: z.string().trim().max(500).optional().or(z.literal('')),
-  // Optional — set when a barcode lookup was used
-  barcode: z.string().max(40).optional().or(z.literal('')),
-  imageUrl: z.string().max(500).optional().or(z.literal('')),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -83,17 +79,10 @@ export function ProductFormDialog({
     resolver: zodResolver(schema),
     defaultValues: {
       name: '',
-      brand: '',
       category: '',
       notes: '',
-      barcode: '',
-      imageUrl: '',
     },
   })
-
-  // Watch imageUrl so we can show a preview
-  const imageUrl = form.watch('imageUrl')
-  const watchedBarcode = form.watch('barcode')
 
   // Track whether this is the initial open of the dialog, so we don't reset
   // the form every time `initialLookup` changes after the dialog is already open.
@@ -105,15 +94,11 @@ export function ProductFormDialog({
       const lookup = initialLookup
       form.reset({
         name: lookup?.name || initial?.name || '',
-        brand: lookup?.brand ?? initial?.brand ?? '',
         category: lookup?.category ?? initial?.category ?? '',
         notes: initial?.notes ?? '',
-        barcode: lookup?.barcode ?? '',
-        imageUrl: lookup?.imageUrl ?? initial?.imageUrl ?? '',
       })
       if (lookup) {
         setBarcodeSource(lookup.source)
-        // Notify parent that the lookup has been consumed so it can clear it
         if (onLookupConsumed) onLookupConsumed()
       } else {
         setBarcodeSource(null)
@@ -131,22 +116,17 @@ export function ProductFormDialog({
   }, [open, initial, openScannerOnMount, initialLookup, form, onLookupConsumed])
 
   function applyLookupResult(result: BarcodeLookupResult) {
-    // Pre-fill the form, but only set fields that have a value (don't overwrite what user typed
-    // before scanning — though in practice the form is empty when scanning fresh)
     const current = form.getValues()
     form.reset({
       name: result.name || current.name,
-      brand: result.brand ?? current.brand,
       category: result.category ?? current.category,
       notes: current.notes,
-      barcode: result.barcode,
-      imageUrl: result.imageUrl ?? current.imageUrl,
     })
     setBarcodeSource(result.source)
     if (result.name) {
       toast({
         title: 'Pre-filled from barcode',
-        description: `${result.name}${result.brand ? ' · ' + result.brand : ''}`,
+        description: result.brand ? `${result.name} · ${result.brand}` : result.name,
       })
     }
   }
@@ -158,28 +138,20 @@ export function ProductFormDialog({
       let savedName: string
 
       if (isEdit && initial) {
-        // Update existing product in local DB
         const { localUpdateProduct } = await import('@/hooks/use-local-data')
         await localUpdateProduct(initial.id, {
           name: values.name,
-          brand: values.brand || null,
           category: values.category || null,
           notes: values.notes || null,
-          imageUrl: values.imageUrl || null,
-          barcode: values.barcode || null,
         })
         savedId = initial.id
         savedName = values.name
       } else {
-        // Create new product in local DB
         const { localAddProduct } = await import('@/hooks/use-local-data')
         savedId = await localAddProduct({
           name: values.name,
-          brand: values.brand || null,
           category: values.category || null,
           notes: values.notes || null,
-          imageUrl: values.imageUrl || null,
-          barcode: values.barcode || null,
         })
         savedName = values.name
       }
@@ -235,51 +207,29 @@ export function ProductFormDialog({
             </DialogDescription>
           </DialogHeader>
 
-          {/* Barcode-found banner with image preview */}
-          {watchedBarcode && (
-            <div className="rounded-lg border bg-primary/5 p-3 flex gap-3">
-              {imageUrl ? (
-                <div className="relative h-16 w-16 shrink-0 rounded-md overflow-hidden border bg-muted">
-                  {/* Using a plain <img> because the URL comes from a third-party API
-                      and we want to avoid Next/Image domain configuration. */}
-                  <img
-                    src={imageUrl}
-                    alt="Product"
-                    className="h-full w-full object-cover"
-                    onError={(e) => {
-                      ;(e.target as HTMLImageElement).style.display = 'none'
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="h-16 w-16 shrink-0 rounded-md border bg-muted grid place-items-center">
-                  <ImageIcon className="h-6 w-6 text-muted-foreground" />
-                </div>
-              )}
+          {/* Source banner when pre-filled from barcode */}
+          {barcodeSource && (
+            <div className="rounded-lg border bg-primary/5 p-3 flex gap-2">
+              <PackageCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-primary">
-                  <PackageCheck className="h-3 w-3" />
+                <div className="text-[10px] uppercase tracking-wider font-semibold text-primary">
                   {barcodeSource === 'openfoodfacts'
                     ? 'From OpenFoodFacts'
                     : barcodeSource === 'upcitemdb'
                     ? 'From UPCitemdb'
                     : 'Barcode entered'}
                 </div>
-                <div className="mt-0.5 text-xs text-muted-foreground font-mono break-all">
-                  {watchedBarcode}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    form.setValue('barcode', '')
-                    form.setValue('imageUrl', '')
-                    setBarcodeSource(null)
-                  }}
-                  className="mt-1 inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-2.5 w-2.5" /> Clear barcode
-                </button>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Brand and barcode will be added when you enter the price.
+                </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setBarcodeSource(null)}
+                className="text-[10px] text-muted-foreground hover:text-foreground shrink-0"
+              >
+                <X className="h-3 w-3" />
+              </button>
             </div>
           )}
 
@@ -298,39 +248,24 @@ export function ProductFormDialog({
                   </FormItem>
                 )}
               />
-              <div className="grid grid-cols-2 gap-3">
-                <FormField
-                  control={form.control}
-                  name="brand"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Brand</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Kraft" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="category"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Category</FormLabel>
-                      <FormControl>
-                        <CategoryCombobox
-                          value={field.value ?? ''}
-                          onChange={field.onChange}
-                          placeholder="Select category…"
-                          existingCategories={existingCategories}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              <FormField
+                control={form.control}
+                name="category"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Category</FormLabel>
+                    <FormControl>
+                      <CategoryCombobox
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        placeholder="Select category…"
+                        existingCategories={existingCategories}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="notes"

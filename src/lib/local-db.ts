@@ -17,14 +17,13 @@ export interface LocalStore {
   _pendingSync?: boolean
 }
 
+// Product is a COMPARISON GROUP — no brand, no barcode, no imageUrl.
+// Those live on LocalPriceEntry.
 export interface LocalProduct {
   id: string
   name: string
   category?: string | null
-  brand?: string | null
   notes?: string | null
-  imageUrl?: string | null
-  barcode?: string | null
   createdAt: string
   updatedAt: string
   deletedAt?: string | null
@@ -39,10 +38,12 @@ export interface LocalPriceEntry {
   quantity: number
   sizeValue: number
   sizeUnit: string
+  brand?: string | null       // brand of THIS variant (moved from Product)
+  imageUrl?: string | null   // image of THIS variant (moved from Product)
   notes?: string | null
   isSale: boolean
   saleExpiresAt?: string | null
-  isOnline: boolean  // true = bought online (Amazon, manufacturer, etc.)
+  isOnline: boolean
   barcode?: string | null
   dateChecked: string
   createdAt: string
@@ -80,10 +81,12 @@ class LocalDB extends Dexie {
   constructor() {
     super('pricewatch')
 
-    this.version(1).stores({
+    // version 1: original schema (Product had brand, imageUrl, barcode)
+    // version 2: moved brand, imageUrl to PriceEntry; removed from Product
+    this.version(2).stores({
       stores: 'id, name, updatedAt, deletedAt, _pendingSync',
-      products: 'id, name, category, barcode, updatedAt, deletedAt, _pendingSync',
-      priceEntries: 'id, productId, storeId, barcode, updatedAt, deletedAt, _pendingSync',
+      products: 'id, name, category, updatedAt, deletedAt, _pendingSync',
+      priceEntries: 'id, productId, storeId, barcode, brand, updatedAt, deletedAt, _pendingSync',
       shoppingListItems: 'id, productId, purchased, updatedAt, deletedAt, _pendingSync',
       syncMeta: 'key',
     })

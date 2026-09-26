@@ -32,6 +32,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
     quantity: pr.quantity,
     sizeValue: pr.sizeValue,
     sizeUnit: pr.sizeUnit,
+    brand: pr.brand ?? null,
+    imageUrl: pr.imageUrl ?? null,
     notes: pr.notes,
     isSale: pr.isSale === true,
     saleExpiresAt: pr.saleExpiresAt ?? null,
@@ -79,17 +81,14 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
   try {
     const { id } = await ctx.params
     const body = await req.json()
-    const { name, brand, category, notes, imageUrl, barcode } = body
+    const { name, category, notes } = body
 
     const updated = await db.product.update({
       where: { id },
       data: {
         ...(typeof name === 'string' ? { name: name.trim() } : {}),
-        ...(typeof brand === 'string' ? { brand: brand.trim() || null } : {}),
         ...(typeof category === 'string' ? { category: category.trim() || null } : {}),
         ...(typeof notes === 'string' ? { notes: notes.trim() || null } : {}),
-        ...(typeof imageUrl === 'string' ? { imageUrl: imageUrl.trim() || null } : {}),
-        ...(typeof barcode === 'string' ? { barcode: barcode.trim() || null } : {}),
       },
     })
     return NextResponse.json(updated)

@@ -168,13 +168,11 @@ async function applyProductChange(record: SyncRecord, counts: { products: number
     return
   }
 
+  // Product is now a group — no brand, imageUrl, or barcode
   const data = {
     name: String(record.name ?? ''),
     category: record.category ? String(record.category) : null,
-    brand: record.brand ? String(record.brand) : null,
     notes: record.notes ? String(record.notes) : null,
-    imageUrl: record.imageUrl ? String(record.imageUrl) : null,
-    barcode: record.barcode ? String(record.barcode) : null,
     updatedAt: incomingUpdatedAt,
     deletedAt: record.deletedAt ? new Date(record.deletedAt) : null,
   }
@@ -202,6 +200,8 @@ async function applyPriceEntryChange(record: SyncRecord, counts: { priceEntries:
     quantity: Number(record.quantity ?? 1),
     sizeValue: Number(record.sizeValue ?? 1),
     sizeUnit: String(record.sizeUnit ?? 'count'),
+    brand: record.brand ? String(record.brand) : null,
+    imageUrl: record.imageUrl ? String(record.imageUrl) : null,
     notes: record.notes ? String(record.notes) : null,
     isSale: Boolean(record.isSale),
     saleExpiresAt: record.saleExpiresAt ? new Date(record.saleExpiresAt) : null,

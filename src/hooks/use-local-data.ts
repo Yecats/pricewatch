@@ -73,6 +73,8 @@ export function useLocalProducts() {
               quantity: pr.quantity,
               sizeValue: pr.sizeValue,
               sizeUnit: pr.sizeUnit,
+              brand: pr.brand ?? null,
+              imageUrl: pr.imageUrl ?? null,
               notes: pr.notes ?? null,
               isSale: pr.isSale,
               saleExpiresAt: pr.saleExpiresAt ?? null,
@@ -105,11 +107,8 @@ export function useLocalProducts() {
         return {
           id: p.id,
           name: p.name,
-          brand: p.brand ?? null,
           category: p.category ?? null,
           notes: p.notes ?? null,
-          imageUrl: p.imageUrl ?? null,
-          barcode: p.barcode ?? null,
           createdAt: p.createdAt,
           updatedAt: p.updatedAt,
           prices: productPrices,
@@ -140,22 +139,16 @@ export function useLocalProducts() {
 
 export async function localAddProduct(data: {
   name: string
-  brand?: string | null
   category?: string | null
   notes?: string | null
-  imageUrl?: string | null
-  barcode?: string | null
 }): Promise<string> {
   const id = generateId()
   const now = new Date().toISOString()
   const record: LocalProduct = {
     id,
     name: data.name,
-    brand: data.brand ?? null,
     category: data.category ?? null,
     notes: data.notes ?? null,
-    imageUrl: data.imageUrl ?? null,
-    barcode: data.barcode ?? null,
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
@@ -187,6 +180,8 @@ export async function localAddPrice(productId: string, data: {
   quantity: number
   sizeValue: number
   sizeUnit: string
+  brand?: string | null
+  imageUrl?: string | null
   notes?: string | null
   isSale?: boolean
   saleExpiresAt?: string | null
@@ -204,6 +199,8 @@ export async function localAddPrice(productId: string, data: {
     quantity: data.quantity,
     sizeValue: data.sizeValue,
     sizeUnit: data.sizeUnit,
+    brand: data.brand ?? null,
+    imageUrl: data.imageUrl ?? null,
     notes: data.notes ?? null,
     isSale: data.isSale ?? false,
     saleExpiresAt: data.saleExpiresAt ?? null,

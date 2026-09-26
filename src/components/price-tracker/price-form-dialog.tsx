@@ -60,13 +60,14 @@ const schema = z.object({
   quantity: z.coerce.number().min(0.0001, 'Quantity must be > 0'),
   sizeValue: z.coerce.number().min(0.0001, 'Size value must be > 0'),
   sizeUnit: z.string().min(1, 'Pick a unit'),
+  brand: z.string().max(80).optional().or(z.literal('')),
   notes: z.string().max(300).optional().or(z.literal('')),
   dateChecked: z.string().optional().or(z.literal('')),
   isSale: z.boolean().default(false),
   saleExpiresAt: z.string().optional().or(z.literal('')),
   isOnline: z.boolean().default(false),
-  // Optional — variant barcode (different size / packaging of the same product)
   barcode: z.string().max(40).optional().or(z.literal('')),
+  imageUrl: z.string().max(500).optional().or(z.literal('')),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -152,7 +153,9 @@ export function PriceFormDialog({
       isSale: false,
       saleExpiresAt: tomorrowDateInput(),
       isOnline: false,
+      brand: '',
       barcode: '',
+      imageUrl: '',
     },
   })
 
@@ -177,7 +180,9 @@ export function PriceFormDialog({
           ? new Date(prefillSource.saleExpiresAt).toISOString().slice(0, 10)
           : tomorrowDateInput(),
         isOnline: prefillSource?.isOnline ?? false,
+        brand: prefillSource?.brand ?? '',
         barcode: '',
+        imageUrl: '',
       })
     }
   }, [open, prefillSource, form, today])
@@ -185,6 +190,8 @@ export function PriceFormDialog({
   function handleBarcodeLookup(result: BarcodeLookupResult) {
     const updates: Partial<FormValues> = {
       barcode: result.barcode,
+      brand: result.brand ?? '',
+      imageUrl: result.imageUrl ?? '',
     }
     if (result.sizeValue != null && result.sizeValue > 0) {
       updates.sizeValue = result.sizeValue
@@ -192,7 +199,6 @@ export function PriceFormDialog({
     if (result.sizeUnit) {
       updates.sizeUnit = result.sizeUnit
     }
-    // If the lookup reveals this is a different size variant, mention it in notes
     if (result.name && result.name !== product.name) {
       const cur = form.getValues('notes')
       const noteLine = `Variant: ${result.name}`
@@ -232,6 +238,8 @@ export function PriceFormDialog({
           quantity: values.quantity,
           sizeValue: values.sizeValue,
           sizeUnit: values.sizeUnit,
+          brand: values.brand?.trim() || null,
+          imageUrl: values.imageUrl?.trim() || null,
           notes: values.notes || null,
           isSale: values.isSale,
           saleExpiresAt,
@@ -246,6 +254,8 @@ export function PriceFormDialog({
           quantity: values.quantity,
           sizeValue: values.sizeValue,
           sizeUnit: values.sizeUnit,
+          brand: values.brand?.trim() || null,
+          imageUrl: values.imageUrl?.trim() || null,
           notes: values.notes || null,
           isSale: values.isSale,
           saleExpiresAt,
@@ -300,7 +310,6 @@ export function PriceFormDialog({
           </DialogTitle>
           <DialogDescription>
             <span className="font-medium text-foreground">{product.name}</span>
-            {product.brand ? ` · ${product.brand}` : ''}
             {' — '}enter the pack details and price you paid.
           </DialogDescription>
         </DialogHeader>
@@ -353,6 +362,21 @@ export function PriceFormDialog({
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Brand field */}
+            <FormField
+              control={form.control}
+              name="brand"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Brand</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g. Kraft" {...field} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

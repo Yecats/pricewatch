@@ -25,25 +25,25 @@ model Store {
   location  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   prices PriceEntry[]
 }
 
+// Product is a COMPARISON GROUP — e.g. "Mac & Cheese" groups together
+// Kraft dinner cups, Kraft 18-pack, store brand, etc.
+// Brand, barcode, and imageUrl live on PriceEntry (the variant), not here.
 model Product {
   id        String   @id @default(cuid())
   name      String
   category  String?
-  brand     String?
   notes     String?
-  imageUrl  String?
-  barcode   String? // EAN/UPC code if scanned
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   prices        PriceEntry[]
   shoppingItems ShoppingListItem[]
-
-  @@index([barcode])
 }
 
 model PriceEntry {
@@ -51,17 +51,20 @@ model PriceEntry {
   productId     String
   storeId       String
   price         Float
-  quantity      Float     @default(1) // e.g. 18 boxes
-  sizeValue     Float     @default(1) // e.g. 7.5
-  sizeUnit      String    @default("count") // oz, lb, g, kg, ml, L, fl_oz, gal, count, each
+  quantity      Float     @default(1)
+  sizeValue     Float     @default(1)
+  sizeUnit      String    @default("count")
+  brand         String?
+  imageUrl      String?
   notes         String?
   isSale        Boolean   @default(false)
   saleExpiresAt DateTime?
-  isOnline      Boolean   @default(false)  // true = bought online (Amazon, manufacturer, etc.)
-  barcode       String? // specific variant barcode (if different from product)
+  isOnline      Boolean   @default(false)
+  barcode       String?
   dateChecked   DateTime  @default(now())
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
@@ -79,6 +82,7 @@ model ShoppingListItem {
   purchased Boolean  @default(false)
   addedAt   DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 

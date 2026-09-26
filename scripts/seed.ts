@@ -31,11 +31,10 @@ async function main() {
     data: { name: "Trader Joe's", color: '#06b6d4' },
   })
 
-  // Create products
+  // Create products (now just groups — no brand, no barcode, no imageUrl)
   const macAndCheese = await db.product.create({
     data: {
       name: 'Mac & Cheese',
-      brand: 'Kraft',
       category: 'Pantry',
       notes: 'Family favorite — compare bulk vs single box',
     },
@@ -44,7 +43,6 @@ async function main() {
   const milk = await db.product.create({
     data: {
       name: 'Whole Milk',
-      brand: 'Store Brand',
       category: 'Dairy',
     },
   })
@@ -52,7 +50,6 @@ async function main() {
   const eggs = await db.product.create({
     data: {
       name: 'Large Eggs',
-      brand: 'Store Brand',
       category: 'Dairy',
     },
   })
@@ -60,7 +57,6 @@ async function main() {
   const chicken = await db.product.create({
     data: {
       name: 'Boneless Skinless Chicken Breast',
-      brand: 'Generic',
       category: 'Meat',
     },
   })
@@ -68,7 +64,6 @@ async function main() {
   const oliveOil = await db.product.create({
     data: {
       name: 'Extra Virgin Olive Oil',
-      brand: 'California Olive Ranch',
       category: 'Pantry',
     },
   })
@@ -82,6 +77,7 @@ async function main() {
       quantity: 18,
       sizeValue: 7.5,
       sizeUnit: 'oz',
+      brand: 'Kraft',
       notes: '18-count bulk box',
     },
   })
@@ -93,6 +89,7 @@ async function main() {
       quantity: 1,
       sizeValue: 7.25,
       sizeUnit: 'oz',
+      brand: 'Kraft',
     },
   })
   // Target sale — temporary deal, expires in 4 days
@@ -104,6 +101,7 @@ async function main() {
       quantity: 1,
       sizeValue: 7.25,
       sizeUnit: 'oz',
+      brand: 'Kraft',
       notes: 'Weekly ad',
       isSale: true,
       saleExpiresAt: future(4),
@@ -117,6 +115,7 @@ async function main() {
       quantity: 5,
       sizeValue: 7.25,
       sizeUnit: 'oz',
+      brand: 'Kraft',
       notes: '5-pack',
     },
   })
@@ -130,6 +129,7 @@ async function main() {
       quantity: 2,
       sizeValue: 1,
       sizeUnit: 'gal',
+      brand: 'Kirkland',
     },
   })
   // Walmart sale on milk — expiring very soon (1 day)
@@ -141,6 +141,7 @@ async function main() {
       quantity: 1,
       sizeValue: 1,
       sizeUnit: 'gal',
+      brand: 'Great Value',
       notes: 'Weekend rollback',
       isSale: true,
       saleExpiresAt: future(1),
@@ -154,6 +155,7 @@ async function main() {
       quantity: 1,
       sizeValue: 1,
       sizeUnit: 'gal',
+      brand: 'Safeway',
     },
   })
 
@@ -166,6 +168,7 @@ async function main() {
       quantity: 24,
       sizeValue: 1,
       sizeUnit: 'count',
+      brand: 'Kirkland',
     },
   })
   await db.priceEntry.create({
@@ -176,6 +179,7 @@ async function main() {
       quantity: 12,
       sizeValue: 1,
       sizeUnit: 'count',
+      brand: "Trader Joe's",
     },
   })
   await db.priceEntry.create({
@@ -186,6 +190,7 @@ async function main() {
       quantity: 12,
       sizeValue: 1,
       sizeUnit: 'count',
+      brand: 'Great Value',
     },
   })
 
@@ -198,6 +203,7 @@ async function main() {
       quantity: 6,
       sizeValue: 1,
       sizeUnit: 'lb',
+      brand: 'Kirkland',
       notes: '6-pack, individually sealed',
     },
   })
@@ -209,6 +215,7 @@ async function main() {
       quantity: 1,
       sizeValue: 1,
       sizeUnit: 'lb',
+      brand: 'Great Value',
     },
   })
   await db.priceEntry.create({
@@ -219,6 +226,7 @@ async function main() {
       quantity: 1,
       sizeValue: 1,
       sizeUnit: 'lb',
+      brand: 'Good & Gather',
       isSale: true,
       saleExpiresAt: future(0), // expires today — urgent
     },
@@ -231,6 +239,7 @@ async function main() {
       quantity: 1,
       sizeValue: 1,
       sizeUnit: 'lb',
+      brand: 'Safeway',
     },
   })
 
@@ -243,6 +252,7 @@ async function main() {
       quantity: 1,
       sizeValue: 1,
       sizeUnit: 'L',
+      brand: 'California Olive Ranch',
       notes: 'Two-pack available separately',
     },
   })
@@ -254,6 +264,7 @@ async function main() {
       quantity: 1,
       sizeValue: 500,
       sizeUnit: 'ml',
+      brand: 'California Olive Ranch',
     },
   })
   await db.priceEntry.create({
@@ -264,6 +275,7 @@ async function main() {
       quantity: 1,
       sizeValue: 16.9,
       sizeUnit: 'fl_oz',
+      brand: 'California Olive Ranch',
     },
   })
 

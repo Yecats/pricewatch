@@ -15,7 +15,6 @@ import type { BarcodeLookupResult } from '@/lib/barcode'
 interface ExistingProduct {
   id: string
   name: string
-  brand?: string | null
   category?: string | null
   priceCount: number
 }
@@ -98,8 +97,6 @@ export function VariantPickerDialog({
               <div className="min-w-0 flex-1">
                 <div className="font-medium text-sm truncate">{p.name}</div>
                 <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                  {p.brand && <span>{p.brand}</span>}
-                  {p.brand && p.category && <span>·</span>}
                   {p.category && <span>{p.category}</span>}
                   <span>·</span>
                   <span>

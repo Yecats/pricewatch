@@ -21,22 +21,20 @@ model Store {
   prices PriceEntry[]
 }
 
+// Product is a COMPARISON GROUP — e.g. "Mac & Cheese" groups together
+// Kraft dinner cups, Kraft 18-pack, store brand, etc.
+// Brand, barcode, and imageUrl live on PriceEntry (the variant), not here.
 model Product {
   id        String   @id @default(cuid())
-  name      String
+  name      String   // group name, e.g. "Mac & Cheese"
   category  String?
-  brand     String?
-  notes     String?
-  imageUrl  String?
-  barcode   String?
+  notes     String?  // group-level notes (e.g. "Family favorite")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   deletedAt DateTime?  // soft delete for sync — null = active
 
   prices        PriceEntry[]
   shoppingItems ShoppingListItem[]
-
-  @@index([barcode])
 }
 
 model PriceEntry {
@@ -44,14 +42,16 @@ model PriceEntry {
   productId    String
   storeId      String
   price        Float
-  quantity     Float    @default(1)
-  sizeValue    Float    @default(1)
-  sizeUnit     String   @default("count")
-  notes        String?
+  quantity     Float    @default(1) // e.g. 18 boxes
+  sizeValue    Float    @default(1) // e.g. 7.5
+  sizeUnit     String   @default("count") // oz, lb, g, kg, ml, L, fl_oz, gal, count, each
+  brand        String?  // brand of THIS specific variant (e.g. "Kraft")
+  imageUrl     String?  // product image for this variant (from OpenFoodFacts)
+  notes        String?  // variant-specific notes (e.g. "Dinner cups", "Club pack")
   isSale       Boolean  @default(false)
   saleExpiresAt DateTime?
   isOnline     Boolean  @default(false)  // true = bought online (Amazon, manufacturer, etc.)
-  barcode      String?
+  barcode      String?  // barcode of this specific variant
   dateChecked  DateTime @default(now())
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
