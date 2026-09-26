@@ -2,35 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { computePrice, isSaleExpired } from '@/lib/units'
 
-// POST /api/sync
-//
-// Bidirectional sync between a client (phone PWA / web browser) and the server.
-// The client sends its locally-pending changes + a "lastSyncAt" cursor.
-// The server applies incoming changes (last-write-wins by updatedAt), then
-// returns all records that changed since lastSyncAt.
-//
-// Request body:
-//   {
-//     lastSyncAt: string | null,   // ISO timestamp of last successful sync, or null for first sync
-//     changes: {
-//       stores: Store[],
-//       products: Product[],
-//       priceEntries: PriceEntry[],
-//       shoppingListItems: ShoppingListItem[]
-//     }
-//   }
-//
-// Response:
-//   {
-//     serverTime: string,          // current server time (use as next lastSyncAt)
-//     changes: {
-//       stores: Store[],
-//       products: Product[],
-//       priceEntries: PriceEntry[],
-//       shoppingListItems: ShoppingListItem[]
-//     }
-//   }
-
 interface SyncRecord {
   id: string
   updatedAt: string
@@ -42,6 +13,8 @@ interface SyncRequestBody {
   lastSyncAt: string | null
   changes: {
     stores?: SyncRecord[]
+    productGroups?: SyncRecord[]
+    groupProducts?: SyncRecord[]
     products?: SyncRecord[]
     priceEntries?: SyncRecord[]
     shoppingListItems?: SyncRecord[]
@@ -52,196 +25,88 @@ export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as SyncRequestBody
     const lastSyncAt = body.lastSyncAt ? new Date(body.lastSyncAt) : new Date(0)
-
     const incoming = body.changes ?? {}
-
-    // === APPLY INCOMING CHANGES (push from client → server) ===
-    // For each record, check if the server version is older. If so, upsert.
-    // Last-write-wins by updatedAt.
-
-    const appliedCounts = {
-      stores: 0,
-      products: 0,
-      priceEntries: 0,
-      shoppingListItems: 0,
-    }
-
-    // Stores
-    if (incoming.stores) {
-      for (const record of incoming.stores) {
-        await applyStoreChange(record, appliedCounts)
-      }
-    }
-
-    // Products
-    if (incoming.products) {
-      for (const record of incoming.products) {
-        await applyProductChange(record, appliedCounts)
-      }
-    }
-
-    // Price entries
-    if (incoming.priceEntries) {
-      for (const record of incoming.priceEntries) {
-        await applyPriceEntryChange(record, appliedCounts)
-      }
-    }
-
-    // Shopping list items
-    if (incoming.shoppingListItems) {
-      for (const record of incoming.shoppingListItems) {
-        await applyShoppingListItemChange(record, appliedCounts)
-      }
-    }
-
-    // === RETURN SERVER CHANGES SINCE lastSyncAt (pull to client) ===
     const whereClause = { updatedAt: { gt: lastSyncAt } }
 
-    const [stores, products, priceEntries, shoppingListItems] = await Promise.all([
+    // === APPLY INCOMING (push from client → server) ===
+    const applied = { stores: 0, productGroups: 0, groupProducts: 0, products: 0, priceEntries: 0, shoppingListItems: 0 }
+
+    for (const r of incoming.stores ?? []) await upsert('store', r, {
+      name: String(r.name ?? ''), color: String(r.color ?? '#8b5cf6'),
+      location: r.location ? String(r.location) : null,
+      updatedAt: new Date(r.updatedAt), deletedAt: r.deletedAt ? new Date(r.deletedAt) : null,
+    }, applied, 'stores')
+
+    for (const r of incoming.productGroups ?? []) await upsert('productGroup', r, {
+      name: String(r.name ?? ''), category: r.category ? String(r.category) : null,
+      notes: r.notes ? String(r.notes) : null,
+      updatedAt: new Date(r.updatedAt), deletedAt: r.deletedAt ? new Date(r.deletedAt) : null,
+    }, applied, 'productGroups')
+
+    for (const r of incoming.groupProducts ?? []) {
+      const existing = await db.groupProduct.findUnique({ where: { id: r.id } })
+      if (!existing) {
+        await db.groupProduct.create({ data: { id: r.id, groupId: String(r.groupId), productId: String(r.productId), createdAt: r.createdAt ? new Date(r.createdAt) : new Date() } }).catch(() => {})
+        applied.groupProducts++
+      }
+    }
+
+    for (const r of incoming.products ?? []) await upsert('product', r, {
+      name: String(r.name ?? ''), brand: r.brand ? String(r.brand) : null,
+      barcode: r.barcode ? String(r.barcode) : null, imageUrl: r.imageUrl ? String(r.imageUrl) : null,
+      category: r.category ? String(r.category) : null, notes: r.notes ? String(r.notes) : null,
+      updatedAt: new Date(r.updatedAt), deletedAt: r.deletedAt ? new Date(r.deletedAt) : null,
+    }, applied, 'products')
+
+    for (const r of incoming.priceEntries ?? []) await upsert('priceEntry', r, {
+      productId: String(r.productId), storeId: String(r.storeId),
+      price: Number(r.price ?? 0), quantity: Number(r.quantity ?? 1),
+      sizeValue: Number(r.sizeValue ?? 1), sizeUnit: String(r.sizeUnit ?? 'count'),
+      notes: r.notes ? String(r.notes) : null, isSale: Boolean(r.isSale),
+      saleExpiresAt: r.saleExpiresAt ? new Date(r.saleExpiresAt) : null,
+      isOnline: Boolean(r.isOnline ?? false), barcode: r.barcode ? String(r.barcode) : null,
+      dateChecked: r.dateChecked ? new Date(r.dateChecked) : new Date(),
+      updatedAt: new Date(r.updatedAt), deletedAt: r.deletedAt ? new Date(r.deletedAt) : null,
+    }, applied, 'priceEntries')
+
+    for (const r of incoming.shoppingListItems ?? []) await upsert('shoppingListItem', r, {
+      groupId: String(r.groupId), quantity: Number(r.quantity ?? 1),
+      notes: r.notes ? String(r.notes) : null, purchased: Boolean(r.purchased),
+      addedAt: r.addedAt ? new Date(r.addedAt) : new Date(),
+      updatedAt: new Date(r.updatedAt), deletedAt: r.deletedAt ? new Date(r.deletedAt) : null,
+    }, applied, 'shoppingListItems')
+
+    // === RETURN SERVER CHANGES SINCE lastSyncAt (pull to client) ===
+    const [stores, productGroups, groupProducts, products, priceEntries, shoppingListItems] = await Promise.all([
       db.store.findMany({ where: whereClause }),
+      db.productGroup.findMany({ where: whereClause }),
+      db.groupProduct.findMany({ where: { createdAt: { gt: lastSyncAt } } }),
       db.product.findMany({ where: whereClause }),
       db.priceEntry.findMany({ where: whereClause }),
       db.shoppingListItem.findMany({ where: whereClause }),
     ])
 
-    // Compute price-per-unit for price entries so the client doesn't have to
-    const priceEntriesWithComputed = priceEntries.map((p) => ({
-      ...p,
-      ...computePrice(p),
-    }))
-
-    // Also send back expired-sale info so the client can filter them out
-    const visiblePriceEntries = priceEntriesWithComputed.filter(
-      (p) => !p.isSale || !isSaleExpired(p.saleExpiresAt)
-    )
+    const visiblePriceEntries = priceEntries.filter((p) => !p.isSale || !isSaleExpired(p.saleExpiresAt))
 
     return NextResponse.json({
       serverTime: new Date().toISOString(),
-      changes: {
-        stores,
-        products,
-        priceEntries: visiblePriceEntries,
-        shoppingListItems,
-      },
-      applied: appliedCounts,
+      changes: { stores, productGroups, groupProducts, products, priceEntries: visiblePriceEntries, shoppingListItems },
+      applied,
     })
   } catch (err) {
     console.error('Sync failed:', err)
-    return NextResponse.json(
-      { error: 'Sync failed', details: err instanceof Error ? err.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Sync failed', details: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
   }
 }
 
-// === Per-model apply functions ===
-
-async function applyStoreChange(record: SyncRecord, counts: { stores: number }) {
-  const existing = await db.store.findUnique({ where: { id: record.id } })
+async function upsert(model: string, record: SyncRecord, data: Record<string, unknown>, counts: Record<string, number>, key: string) {
+  const existing = await (db as any)[model].findUnique({ where: { id: record.id } })
   const incomingUpdatedAt = new Date(record.updatedAt)
-
-  if (existing && existing.updatedAt >= incomingUpdatedAt) {
-    return // server is newer or equal — skip
-  }
-
-  const data = {
-    name: String(record.name ?? ''),
-    color: String(record.color ?? '#8b5cf6'),
-    location: record.location ? String(record.location) : null,
-    updatedAt: incomingUpdatedAt,
-    deletedAt: record.deletedAt ? new Date(record.deletedAt) : null,
-  }
-
-  await db.store.upsert({
+  if (existing && existing.updatedAt >= incomingUpdatedAt) return
+  await (db as any)[model].upsert({
     where: { id: record.id },
     create: { id: record.id, ...data, createdAt: record.createdAt ? new Date(record.createdAt) : new Date() },
     update: data,
   })
-  counts.stores++
-}
-
-async function applyProductChange(record: SyncRecord, counts: { products: number }) {
-  const existing = await db.product.findUnique({ where: { id: record.id } })
-  const incomingUpdatedAt = new Date(record.updatedAt)
-
-  if (existing && existing.updatedAt >= incomingUpdatedAt) {
-    return
-  }
-
-  // Product is now a group — no brand, imageUrl, or barcode
-  const data = {
-    name: String(record.name ?? ''),
-    category: record.category ? String(record.category) : null,
-    notes: record.notes ? String(record.notes) : null,
-    updatedAt: incomingUpdatedAt,
-    deletedAt: record.deletedAt ? new Date(record.deletedAt) : null,
-  }
-
-  await db.product.upsert({
-    where: { id: record.id },
-    create: { id: record.id, ...data, createdAt: record.createdAt ? new Date(record.createdAt) : new Date() },
-    update: data,
-  })
-  counts.products++
-}
-
-async function applyPriceEntryChange(record: SyncRecord, counts: { priceEntries: number }) {
-  const existing = await db.priceEntry.findUnique({ where: { id: record.id } })
-  const incomingUpdatedAt = new Date(record.updatedAt)
-
-  if (existing && existing.updatedAt >= incomingUpdatedAt) {
-    return
-  }
-
-  const data = {
-    productId: String(record.productId),
-    storeId: String(record.storeId),
-    price: Number(record.price ?? 0),
-    quantity: Number(record.quantity ?? 1),
-    sizeValue: Number(record.sizeValue ?? 1),
-    sizeUnit: String(record.sizeUnit ?? 'count'),
-    brand: record.brand ? String(record.brand) : null,
-    imageUrl: record.imageUrl ? String(record.imageUrl) : null,
-    notes: record.notes ? String(record.notes) : null,
-    isSale: Boolean(record.isSale),
-    saleExpiresAt: record.saleExpiresAt ? new Date(record.saleExpiresAt) : null,
-    isOnline: Boolean(record.isOnline ?? false),
-    barcode: record.barcode ? String(record.barcode) : null,
-    dateChecked: record.dateChecked ? new Date(record.dateChecked) : new Date(),
-    updatedAt: incomingUpdatedAt,
-    deletedAt: record.deletedAt ? new Date(record.deletedAt) : null,
-  }
-
-  await db.priceEntry.upsert({
-    where: { id: record.id },
-    create: { id: record.id, ...data, createdAt: record.createdAt ? new Date(record.createdAt) : new Date() },
-    update: data,
-  })
-  counts.priceEntries++
-}
-
-async function applyShoppingListItemChange(record: SyncRecord, counts: { shoppingListItems: number }) {
-  const existing = await db.shoppingListItem.findUnique({ where: { id: record.id } })
-  const incomingUpdatedAt = new Date(record.updatedAt)
-
-  if (existing && existing.updatedAt >= incomingUpdatedAt) {
-    return
-  }
-
-  const data = {
-    productId: String(record.productId),
-    quantity: Number(record.quantity ?? 1),
-    notes: record.notes ? String(record.notes) : null,
-    purchased: Boolean(record.purchased),
-    addedAt: record.addedAt ? new Date(record.addedAt) : new Date(),
-    updatedAt: incomingUpdatedAt,
-    deletedAt: record.deletedAt ? new Date(record.deletedAt) : null,
-  }
-
-  await db.shoppingListItem.upsert({
-    where: { id: record.id },
-    create: { id: record.id, ...data },
-    update: data,
-  })
-  counts.shoppingListItems++
+  counts[key]++
 }

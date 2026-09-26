@@ -894,7 +894,23 @@ export default function Home() {
         matches={variantMatches}
         onPickExisting={(productId) => {
           setVariantPickerOpen(false)
-          void openProductById(productId)
+          // Open the detail dialog AND immediately open the Add Price form
+          // pre-filled with the barcode lookup data (brand, barcode, size, etc.)
+          void (async () => {
+            await openProductById(productId)
+            // Trigger the Add Price form with the lookup data
+            // We use a small delay to let the detail dialog render first
+            queueMicrotask(() => {
+              // Signal to ProductDetailDialog to open its price form
+              // by setting pendingLookup on the selected product
+              if (pendingLookup) {
+                // Dispatch a custom event that ProductDetailDialog listens for
+                window.dispatchEvent(new CustomEvent('pricewatch:add-price-from-lookup', {
+                  detail: pendingLookup
+                }))
+              }
+            })
+          })()
         }}
         onCreateNew={() => {
           setVariantPickerOpen(false)

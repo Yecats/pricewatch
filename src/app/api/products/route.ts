@@ -2,89 +2,48 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { computePrice, isSaleExpired } from '@/lib/units'
 
+// GET /api/products — returns all standalone products with their prices + group memberships
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const q = searchParams.get('q')?.trim() ?? ''
-  const category = searchParams.get('category')?.trim() ?? ''
 
   const products = await db.product.findMany({
-    where: {
-      AND: [
-        { deletedAt: null },
-        q
-          ? {
-              OR: [
-                { name: { contains: q } },
-                { brand: { contains: q } },
-                { category: { contains: q } },
-              ],
-            }
-          : {},
-        category ? { category: { contains: category } } : {},
-      ],
-    },
+    where: { deletedAt: null, ...(q ? { OR: [{ name: { contains: q } }, { brand: { contains: q } }, { barcode: { contains: q } }] } : {}) },
     orderBy: { name: 'asc' },
     include: {
-      prices: {
-        include: { store: true },
-      },
+      prices: { where: { deletedAt: null }, include: { store: true } },
+      groups: true,
     },
   })
 
-  // Compute aggregate stats per product — expired sales and soft-deleted entries are hidden
   const result = products.map((p) => {
-    const visiblePrices = p.prices.filter(
-      (pr) => !pr.deletedAt && (!pr.isSale || !isSaleExpired(pr.saleExpiresAt))
-    )
+    const visiblePrices = p.prices
+      .filter((pr) => !pr.isSale || !isSaleExpired(pr.saleExpiresAt))
+      .map((pr) => ({
+        id: pr.id, productId: pr.productId, storeId: pr.storeId,
+        storeName: pr.store.name, storeColor: pr.store.color,
+        storeLocation: pr.store.location,
+        price: pr.price, quantity: pr.quantity, sizeValue: pr.sizeValue,
+        sizeUnit: pr.sizeUnit, notes: pr.notes,
+        isSale: pr.isSale === true, saleExpiresAt: pr.saleExpiresAt ?? null,
+        isOnline: pr.isOnline ?? false,
+        dateChecked: pr.dateChecked, createdAt: pr.createdAt,
+        ...computePrice(pr),
+      }))
 
-    const computed = visiblePrices.map((pr) => ({
-      id: pr.id,
-      storeId: pr.storeId,
-      storeName: pr.store.name,
-      storeColor: pr.store.color,
-      storeLocation: pr.store.location,
-      price: pr.price,
-      quantity: pr.quantity,
-      sizeValue: pr.sizeValue,
-      sizeUnit: pr.sizeUnit,
-      brand: pr.brand ?? null,
-      imageUrl: pr.imageUrl ?? null,
-      notes: pr.notes,
-      isSale: pr.isSale === true,
-      saleExpiresAt: pr.saleExpiresAt ?? null,
-      isOnline: pr.isOnline === true,
-      barcode: pr.barcode ?? null,
-      dateChecked: pr.dateChecked,
-      createdAt: pr.createdAt,
-      ...computePrice(pr),
-    }))
-
-    // Find best value per category
-    const byCategory: Record<string, typeof computed> = {}
-    for (const c of computed) {
-      const key = c.category
-      if (!byCategory[key]) byCategory[key] = []
-      byCategory[key].push(c)
-    }
-
-    const bestPerCategory: Record<string, (typeof computed)[number]> = {}
-    for (const [cat, entries] of Object.entries(byCategory)) {
-      bestPerCategory[cat] = entries.reduce((best, cur) =>
-        cur.pricePerBaseUnit < best.pricePerBaseUnit ? cur : best
-      )
-    }
-
-    const allPrices = computed.map((c) => c.pricePerBaseUnit)
-    const lowestPricePerUnit = allPrices.length ? Math.min(...allPrices) : null
-    const storeCount = new Set(visiblePrices.map((pr) => pr.storeId)).size
+    const allVals = visiblePrices.map((c) => c.pricePerBaseUnit)
+    const best = visiblePrices.length ? [...visiblePrices].sort((a, b) => a.pricePerBaseUnit - b.pricePerBaseUnit)[0] : null
 
     return {
-      ...p,
-      prices: computed,
-      bestPerCategory,
-      lowestPricePerUnit,
-      storeCount,
+      id: p.id, name: p.name, brand: p.brand, barcode: p.barcode,
+      imageUrl: p.imageUrl, category: p.category, notes: p.notes,
+      createdAt: p.createdAt, updatedAt: p.updatedAt,
+      prices: visiblePrices,
+      bestPrice: best,
+      lowestPricePerUnit: allVals.length ? Math.min(...allVals) : null,
+      storeCount: new Set(visiblePrices.map((pr) => pr.storeId)).size,
       priceCount: visiblePrices.length,
+      groupIds: p.groups.map((gp) => gp.groupId),
     }
   })
 
@@ -94,24 +53,28 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, category, notes } = body
+    const { name, brand, barcode, imageUrl, category, notes, groupId } = body
+    if (!name?.trim()) return NextResponse.json({ error: 'Name required' }, { status: 400 })
 
-    if (!name || typeof name !== 'string' || !name.trim()) {
-      return NextResponse.json({ error: 'Product name is required' }, { status: 400 })
-    }
-
-    // Product is now just a group — no brand, imageUrl, or barcode
     const product = await db.product.create({
       data: {
         name: name.trim(),
-        category: typeof category === 'string' ? category.trim() || null : null,
-        notes: typeof notes === 'string' ? notes.trim() || null : null,
+        brand: brand?.trim() || null,
+        barcode: barcode?.trim() || null,
+        imageUrl: imageUrl?.trim() || null,
+        category: category?.trim() || null,
+        notes: notes?.trim() || null,
       },
     })
+
+    // If a groupId is provided, link the product to that group
+    if (groupId && typeof groupId === 'string') {
+      await db.groupProduct.create({ data: { groupId, productId: product.id } }).catch(() => {})
+    }
+
     return NextResponse.json(product, { status: 201 })
   } catch (err) {
-    console.error('Failed to create product:', err)
-    return NextResponse.json({ error: 'Failed to create product' }, { status: 500 })
+    console.error(err)
+    return NextResponse.json({ error: 'Failed' }, { status: 500 })
   }
 }
-

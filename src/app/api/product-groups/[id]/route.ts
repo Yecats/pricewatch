@@ -4,14 +4,11 @@ import { db } from '@/lib/db'
 export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
   const body = await req.json()
-  const { name, brand, barcode, imageUrl, category, notes } = body
-  const updated = await db.product.update({
+  const { name, category, notes } = body
+  const updated = await db.productGroup.update({
     where: { id },
     data: {
       ...(typeof name === 'string' ? { name: name.trim() } : {}),
-      ...(typeof brand === 'string' ? { brand: brand.trim() || null } : {}),
-      ...(typeof barcode === 'string' ? { barcode: barcode.trim() || null } : {}),
-      ...(typeof imageUrl === 'string' ? { imageUrl: imageUrl.trim() || null } : {}),
       ...(typeof category === 'string' ? { category: category.trim() || null } : {}),
       ...(typeof notes === 'string' ? { notes: notes.trim() || null } : {}),
     },
@@ -21,6 +18,6 @@ export async function PUT(req: NextRequest, ctx: { params: Promise<{ id: string 
 
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
-  await db.product.update({ where: { id }, data: { deletedAt: new Date() } })
+  await db.productGroup.update({ where: { id }, data: { deletedAt: new Date() } })
   return NextResponse.json({ ok: true })
 }

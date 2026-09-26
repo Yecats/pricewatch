@@ -1,5 +1,11 @@
 // Price tracker — local SQLite (dev) / PostgreSQL (prod)
-// See prisma/schema.prod.prisma for the production variant.
+// Three-layer model: Groups → Products → Prices
+//
+// Groups are comparison collections (e.g. "Mac & Cheese").
+// Products are physical items with barcodes/brands (e.g. "Kraft 18-pack").
+// Prices are per-store entries on a product (e.g. "Costco $24.99").
+// Products can belong to multiple groups (many-to-many via GroupProduct).
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -16,67 +22,96 @@ model Store {
   location  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  deletedAt DateTime?  // soft delete for sync — null = active
+  deletedAt DateTime?
 
   prices PriceEntry[]
 }
 
-// Product is a COMPARISON GROUP — e.g. "Mac & Cheese" groups together
-// Kraft dinner cups, Kraft 18-pack, store brand, etc.
-// Brand, barcode, and imageUrl live on PriceEntry (the variant), not here.
-model Product {
+// A comparison group — e.g. "Mac & Cheese", "Chicken", "Quick Dinners"
+model ProductGroup {
   id        String   @id @default(cuid())
-  name      String   // group name, e.g. "Mac & Cheese"
+  name      String
   category  String?
-  notes     String?  // group-level notes (e.g. "Family favorite")
+  notes     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  deletedAt DateTime?  // soft delete for sync — null = active
+  deletedAt DateTime?
 
-  prices        PriceEntry[]
+  products GroupProduct[]
   shoppingItems ShoppingListItem[]
 }
 
+// Junction table — many-to-many between Groups and Products
+model GroupProduct {
+  id        String   @id @default(cuid())
+  groupId   String
+  productId String
+  createdAt DateTime @default(now())
+
+  group   ProductGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  product Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, productId])
+  @@index([groupId])
+  @@index([productId])
+}
+
+// A physical product with a barcode — e.g. "Kraft Mac & Cheese 18-pack"
+model Product {
+  id        String   @id @default(cuid())
+  name      String
+  brand     String?
+  barcode   String?
+  imageUrl  String?
+  category  String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  prices  PriceEntry[]
+  groups  GroupProduct[]
+
+  @@index([barcode])
+}
+
+// A price entry at a specific store for a specific product
 model PriceEntry {
   id           String   @id @default(cuid())
   productId    String
   storeId      String
   price        Float
-  quantity     Float    @default(1) // e.g. 18 boxes
-  sizeValue    Float    @default(1) // e.g. 7.5
-  sizeUnit     String   @default("count") // oz, lb, g, kg, ml, L, fl_oz, gal, count, each
-  brand        String?  // brand of THIS specific variant (e.g. "Kraft")
-  imageUrl     String?  // product image for this variant (from OpenFoodFacts)
-  notes        String?  // variant-specific notes (e.g. "Dinner cups", "Club pack")
+  quantity     Float    @default(1)
+  sizeValue    Float    @default(1)
+  sizeUnit     String   @default("count")
+  notes        String?
   isSale       Boolean  @default(false)
   saleExpiresAt DateTime?
-  isOnline     Boolean  @default(false)  // true = bought online (Amazon, manufacturer, etc.)
-  barcode      String?  // barcode of this specific variant
+  isOnline     Boolean  @default(false)
   dateChecked  DateTime @default(now())
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  deletedAt    DateTime?  // soft delete for sync — null = active
+  deletedAt    DateTime?
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   store   Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@index([productId])
   @@index([storeId])
-  @@index([barcode])
 }
 
 model ShoppingListItem {
   id          String   @id @default(cuid())
-  productId   String
+  groupId     String
   quantity    Float    @default(1)
   notes       String?
   purchased   Boolean  @default(false)
   addedAt     DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  deletedAt   DateTime?  // soft delete for sync — null = active
+  deletedAt   DateTime?
 
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  group ProductGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
-  @@index([productId])
+  @@index([groupId])
   @@index([purchased])
 }
