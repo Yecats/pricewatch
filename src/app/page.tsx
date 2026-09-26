@@ -19,6 +19,7 @@ import { BarcodeScannerDialog } from '@/components/price-tracker/barcode-scanner
 import { ShoppingListDialog } from '@/components/price-tracker/shopping-list-dialog'
 import { GroupDetailDialog } from '@/components/price-tracker/group-detail-dialog'
 import { ProductFormDialog } from '@/components/price-tracker/product-form-dialog'
+import { ProductDetailDialog } from '@/components/price-tracker/product-detail-dialog'
 import { GroupFormDialog } from '@/components/price-tracker/group-form-dialog'
 import { VariantPickerDialog } from '@/components/price-tracker/variant-picker-dialog'
 import type { ProductGroup, Product, Store, ComputedPrice } from '@/components/price-tracker/types'
@@ -46,7 +47,9 @@ export default function Home() {
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
 
   const [groupFormOpen, setGroupFormOpen] = useState(false)
+  const [groupFormInitialProductIds, setGroupFormInitialProductIds] = useState<string[]>([])
   const [selectedGroup, setSelectedGroup] = useState<ProductGroup | null>(null)
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
   const [productFormOpen, setProductFormOpen] = useState(false)
   const [storesDialogOpen, setStoresDialogOpen] = useState(false)
@@ -58,6 +61,7 @@ export default function Home() {
   const [shoppingListCount, setShoppingListCount] = useState(0)
   const [onListIds, setOnListIds] = useState<Set<string>>(new Set())
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
+  const [selectMode, setSelectMode] = useState(false)
 
   const [syncState, setSyncState] = useState<SyncState>(getSyncState())
   const lastSyncCountRef = useRef(syncState.syncCount)
@@ -166,10 +170,37 @@ export default function Home() {
     try {
       await localDeleteProduct(p.id)
       toast({ title: 'Product removed', description: p.name })
+      // If the deleted product was open in detail dialog, close it
+      setSelectedProduct(prev => prev?.id === p.id ? null : prev)
       await reloadProducts()
     } catch (e) {
       toast({ variant: 'destructive', title: 'Error', description: e instanceof Error ? e.message : 'Failed' })
     }
+  }
+
+  function toggleProductSelection(id: string) {
+    setSelectedProductIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function clearSelection() {
+    setSelectedProductIds(new Set())
+    setSelectMode(false)
+  }
+
+  function openCreateGroupFromSelected() {
+    setGroupFormInitialProductIds(Array.from(selectedProductIds))
+    setGroupFormOpen(true)
+    clearSelection()
+  }
+
+  function openEditProduct(p: Product) {
+    setEditingProduct(p)
+    setProductFormOpen(true)
   }
 
   async function toggleShoppingList(groupId: string) {
@@ -279,17 +310,36 @@ export default function Home() {
             <span className="hidden sm:inline">Scan</span>
           </Button>
           {activeTab === 'groups' ? (
-            <Button size="sm" onClick={() => setGroupFormOpen(true)}>
+            <Button size="sm" onClick={() => { setGroupFormInitialProductIds([]); setGroupFormOpen(true) }}>
               <Plus className="mr-1 h-3.5 w-3.5" />
               <span className="hidden sm:inline">Add group</span>
               <span className="sm:hidden">Add</span>
             </Button>
           ) : (
-            <Button size="sm" onClick={() => { setEditingProduct(null); setPendingLookup(null); setProductFormOpen(true) }}>
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Add product</span>
-              <span className="sm:hidden">Add</span>
-            </Button>
+            <div className="flex items-center gap-1.5">
+              {selectMode && selectedProductIds.size > 0 && (
+                <Button size="sm" onClick={openCreateGroupFromSelected}>
+                  <Layers className="mr-1 h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Create group ({selectedProductIds.size})</span>
+                  <span className="sm:hidden">Group ({selectedProductIds.size})</span>
+                </Button>
+              )}
+              {selectMode ? (
+                <Button size="sm" variant="outline" onClick={clearSelection}>
+                  <span>Cancel</span>
+                </Button>
+              ) : (
+                <Button size="sm" variant="outline" onClick={() => setSelectMode(true)} disabled={products.length === 0}>
+                  <Check className="mr-1 h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Select</span>
+                </Button>
+              )}
+              <Button size="sm" onClick={() => { setEditingProduct(null); setPendingLookup(null); setProductFormOpen(true) }}>
+                <Plus className="mr-1 h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Add product</span>
+                <span className="sm:hidden">Add</span>
+              </Button>
+            </div>
           )}
           <ThemeToggle />
         </div>
@@ -385,6 +435,32 @@ export default function Home() {
           </TabsContent>
 
           <TabsContent value="products" className="mt-4">
+            {selectMode && products.length > 0 && (
+              <div className="mb-3 flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                <Check className="h-3.5 w-3.5" />
+                <span>
+                  {selectedProductIds.size === 0
+                    ? 'Tap products to select them.'
+                    : `${selectedProductIds.size} selected.`}{' '}
+                  Use "Create group" to combine them into a comparison group.
+                </span>
+                {filteredProducts.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (selectedProductIds.size === filteredProducts.length) {
+                        setSelectedProductIds(new Set())
+                      } else {
+                        setSelectedProductIds(new Set(filteredProducts.map(p => p.id)))
+                      }
+                    }}
+                    className="ml-auto text-primary hover:underline font-medium"
+                  >
+                    {selectedProductIds.size === filteredProducts.length ? 'Clear all' : 'Select all'}
+                  </button>
+                )}
+              </div>
+            )}
             {loading || productsLoading ? (
               <div className="text-center py-20"><Loader2 className="mx-auto h-8 w-8 animate-spin text-muted-foreground" /><p className="mt-3 text-sm text-muted-foreground">Loading products...</p></div>
             ) : filteredProducts.length === 0 ? (
@@ -393,7 +469,11 @@ export default function Home() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {filteredProducts.map(p => (
                   <ProductCard key={p.id} product={p} groups={groups}
-                    onEdit={() => { setEditingProduct(p); setProductFormOpen(true) }}
+                    selectMode={selectMode}
+                    isSelected={selectedProductIds.has(p.id)}
+                    onToggleSelect={() => toggleProductSelection(p.id)}
+                    onOpen={() => setSelectedProduct(p)}
+                    onEdit={() => openEditProduct(p)}
                     onDelete={() => deleteProduct(p)} />
                 ))}
               </div>
@@ -412,10 +492,24 @@ export default function Home() {
       </footer>
 
       {/* Dialogs */}
-      <GroupFormDialog open={groupFormOpen} onOpenChange={setGroupFormOpen} products={products} onSaved={() => reloadGroups()} />
+      <GroupFormDialog
+        open={groupFormOpen}
+        onOpenChange={setGroupFormOpen}
+        products={products}
+        initialProductIds={groupFormInitialProductIds}
+        onSaved={() => { void reloadGroups(); void reloadProducts() }}
+      />
       <GroupDetailDialog open={!!selectedGroup} onOpenChange={(v) => { if (!v) setSelectedGroup(null) }}
         group={selectedGroup} stores={stores} onPricesChanged={() => { void reloadGroups(); void reloadProducts() }}
         onAddToList={toggleShoppingList} isOnList={selectedGroup ? onListIds.has(selectedGroup.id) : false} />
+      <ProductDetailDialog
+        open={!!selectedProduct}
+        onOpenChange={(v) => { if (!v) setSelectedProduct(null) }}
+        product={selectedProduct}
+        stores={stores}
+        onPricesChanged={() => { void reloadProducts(); void reloadGroups() }}
+        onEditDetails={(p) => { setSelectedProduct(null); openEditProduct(p) }}
+      />
       <ProductFormDialog open={productFormOpen} onOpenChange={setProductFormOpen} initial={editingProduct}
         initialLookup={pendingLookup} onLookupConsumed={() => setPendingLookup(null)} onSaved={handleProductSaved}
         onOpenScanner={() => { setProductFormOpen(false); setGlobalScannerOpen(true) }}
@@ -425,15 +519,22 @@ export default function Home() {
       <BarcodeScannerDialog open={globalScannerOpen} onOpenChange={setGlobalScannerOpen}
         onDetected={(result) => void handleGlobalScan(result)}
         onProductSelected={(productId) => {
-          // Find the product and open its group
+          // Find the product and open its detail dialog (with prices)
+          const p = products.find(p => p.id === productId)
+          if (p) { setSelectedProduct(p); return }
+          // Fallback: not in cache yet — try local DB
           void (async () => {
-            const links = await localDb.groupProducts.where('productId').equals(productId).toArray()
-            if (links.length > 0) {
-              const g = groups.find(g => g.id === links[0].groupId)
-              if (g) { setSelectedGroup(g); return }
+            const localP = await localDb.products.get(productId)
+            if (localP && !localP.deletedAt) {
+              // Trigger reload then open
+              await reloadProducts()
+              const refreshed = (await localDb.products.get(productId))
+              if (refreshed) {
+                // Open via state — we need a Product object; reload will populate `products`
+                // For now just open the form
+                setEditingProduct(null); setProductFormOpen(true)
+              }
             }
-            const p = products.find(p => p.id === productId)
-            if (p) { setEditingProduct(p); setProductFormOpen(true) }
           })()
         }}
         title="Scan product barcode" description="Point your camera at any product barcode, search by name, or pick from your products." />
@@ -531,23 +632,42 @@ function GroupCard({ group, onOpen, onEdit, onDelete, onAddToList, isOnList }: {
 }
 
 // === Product Card (Products tab) ===
-function ProductCard({ product, groups, onEdit, onDelete }: {
-  product: Product; groups: ProductGroup[]; onEdit: () => void; onDelete: () => void;
+function ProductCard({ product, groups, onOpen, onEdit, onDelete, selectMode, isSelected, onToggleSelect }: {
+  product: Product; groups: ProductGroup[];
+  onOpen: () => void; onEdit: () => void; onDelete: () => void;
+  selectMode?: boolean; isSelected?: boolean; onToggleSelect?: () => void;
 }) {
   const best = product.bestPrice
   const bestIsSale = best?.isSale === true
   const productGroups = (product.groupIds ?? []).map(gid => groups.find(g => g.id === gid)).filter(Boolean) as ProductGroup[]
+  const handleClick = selectMode ? onToggleSelect : onOpen
   return (
-    <Card className="group relative overflow-hidden p-4 cursor-pointer hover:shadow-md hover:border-primary/40 transition-all" onClick={onEdit}>
+    <Card
+      className={`group relative overflow-hidden p-4 cursor-pointer hover:shadow-md transition-all ${
+        selectMode && isSelected
+          ? 'border-primary ring-2 ring-primary/30 bg-primary/5'
+          : selectMode
+            ? 'hover:border-primary/40'
+            : 'hover:shadow-md hover:border-primary/40'
+      }`}
+      onClick={handleClick}
+    >
+      {selectMode && (
+        <div className={`absolute top-3 right-3 h-5 w-5 rounded-full border-2 grid place-items-center transition-colors ${isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/40 bg-background'}`}>
+          {isSelected && <Check className="h-3 w-3 text-primary-foreground" strokeWidth={4} />}
+        </div>
+      )}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <h3 className="font-semibold leading-tight truncate">{product.name}</h3>
           {product.brand && <p className="text-xs text-muted-foreground mt-0.5 truncate">{product.brand}</p>}
         </div>
-        <div className="flex opacity-0 group-hover:opacity-100 transition-opacity gap-0.5 -mr-1 -mt-1">
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onEdit() }} aria-label="Edit"><Pencil className="h-3.5 w-3.5" /></Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); onDelete() }} aria-label="Delete"><Trash2 className="h-3.5 w-3.5" /></Button>
-        </div>
+        {!selectMode && (
+          <div className="flex opacity-0 group-hover:opacity-100 transition-opacity gap-0.5 -mr-1 -mt-1">
+            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onEdit() }} aria-label="Edit details"><Pencil className="h-3.5 w-3.5" /></Button>
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); onDelete() }} aria-label="Delete"><Trash2 className="h-3.5 w-3.5" /></Button>
+          </div>
+        )}
       </div>
       {product.priceCount === 0 ? (
         <div className="mt-4 text-xs text-muted-foreground italic">No prices tracked yet</div>

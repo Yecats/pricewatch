@@ -267,7 +267,25 @@ export async function localDeleteStore(id: string): Promise<void> {
 }
 
 export async function localAddProductToGroup(groupId: string, productId: string): Promise<void> {
+  // Avoid duplicates: if a (deleted or active) link already exists for this pair, just clear deletedAt.
+  const existing = await localDb.groupProducts
+    .where('groupId').equals(groupId)
+    .and((gp) => gp.productId === productId)
+    .first()
+  if (existing) {
+    if (existing.deletedAt) {
+      await localDb.groupProducts.update(existing.id, { deletedAt: null, _pendingSync: true })
+      await refreshPendingCount(); scheduleSync()
+    }
+    return
+  }
   const id = generateId()
   await localDb.groupProducts.add({ id, groupId, productId, createdAt: now(), _pendingSync: true })
+  await refreshPendingCount(); scheduleSync()
+}
+
+export async function localRemoveProductFromGroup(groupProductId: string): Promise<void> {
+  // Soft-delete the link row so it can sync.
+  await localDb.groupProducts.update(groupProductId, { deletedAt: now(), _pendingSync: true })
   await refreshPendingCount(); scheduleSync()
 }

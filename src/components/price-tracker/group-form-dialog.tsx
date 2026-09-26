@@ -27,10 +27,12 @@ interface Props {
   open: boolean
   onOpenChange: (v: boolean) => void
   products: Product[]
+  /** Pre-selected product IDs — typically used when "Create group from selected" is clicked on the Products tab. */
+  initialProductIds?: string[]
   onSaved: () => void
 }
 
-export function GroupFormDialog({ open, onOpenChange, products, onSaved }: Props) {
+export function GroupFormDialog({ open, onOpenChange, products, initialProductIds = [], onSaved }: Props) {
   const { toast } = useToast()
   const [submitting, setSubmitting] = useState(false)
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
@@ -43,9 +45,9 @@ export function GroupFormDialog({ open, onOpenChange, products, onSaved }: Props
   useEffect(() => {
     if (open) {
       form.reset({ name: '', category: '', notes: '' })
-      setSelectedProductIds(new Set())
+      setSelectedProductIds(new Set(initialProductIds))
     }
-  }, [open, form])
+  }, [open, form, initialProductIds])
 
   async function onSubmit(values: FormValues) {
     setSubmitting(true)
@@ -83,7 +85,11 @@ export function GroupFormDialog({ open, onOpenChange, products, onSaved }: Props
             <Layers className="h-5 w-5 text-primary" />
             New group
           </DialogTitle>
-          <DialogDescription>Create a comparison group. You can add products now or later.</DialogDescription>
+          <DialogDescription>
+            Create a comparison group. {initialProductIds.length > 0
+              ? `${initialProductIds.length} product${initialProductIds.length === 1 ? '' : 's'} pre-selected from the Products tab.`
+              : 'You can add products now or later.'}
+          </DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">

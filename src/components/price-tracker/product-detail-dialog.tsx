@@ -58,8 +58,8 @@ interface Props {
   product: Product | null
   stores: Store[]
   onPricesChanged: () => void
-  onAddToList?: (productId: string) => Promise<void> | void
-  isOnList?: boolean
+  /** Called when the user clicks "Edit details" — parent should open ProductFormDialog with this product. */
+  onEditDetails?: (product: Product) => void
 }
 
 const CATEGORY_TITLE: Record<UnitCategory, string> = {
@@ -94,15 +94,13 @@ export function ProductDetailDialog({
   product,
   stores,
   onPricesChanged,
-  onAddToList,
-  isOnList,
+  onEditDetails,
 }: Props) {
   const { toast } = useToast()
   const [priceFormOpen, setPriceFormOpen] = useState(false)
   const [editingPrice, setEditingPrice] = useState<ComputedPrice | null>(null)
   const [forkingPrice, setForkingPrice] = useState<ComputedPrice | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [addingToList, setAddingToList] = useState(false)
   const [activeTab, setActiveTab] = useState<'current' | 'history'>('current')
   const [historyPrices, setHistoryPrices] = useState<ComputedPrice[]>([])
   const [reactivatingId, setReactivatingId] = useState<string | null>(null)
@@ -145,6 +143,7 @@ export function ProductDetailDialog({
             storeName: store?.name ?? 'Unknown',
             storeColor: store?.color ?? '#888',
             storeLocation: store?.location ?? null,
+            productId: p.productId,
             price: p.price,
             quantity: p.quantity,
             sizeValue: p.sizeValue,
@@ -153,7 +152,6 @@ export function ProductDetailDialog({
             isSale: p.isSale,
             saleExpiresAt: p.saleExpiresAt ?? null,
             isOnline: p.isOnline ?? false,
-            barcode: p.barcode ?? null,
             dateChecked: p.dateChecked,
             createdAt: p.createdAt,
             ...computePrice(p),
@@ -184,7 +182,6 @@ export function ProductDetailDialog({
         isSale: true,
         saleExpiresAt: tomorrow.toISOString(),
         isOnline: p.isOnline,
-        barcode: p.barcode,
         dateChecked: new Date().toISOString(),
       })
 
@@ -223,7 +220,7 @@ export function ProductDetailDialog({
 
   // Group prices by category and sort each group by price-per-base-unit ascending
   const grouped: Record<string, ComputedPrice[]> = {}
-  for (const p of product.prices) {
+  for (const p of product.prices ?? []) {
     if (!grouped[p.category]) grouped[p.category] = []
     grouped[p.category].push(p)
   }
@@ -231,6 +228,9 @@ export function ProductDetailDialog({
     grouped[k].sort((a, b) => a.pricePerBaseUnit - b.pricePerBaseUnit)
   }
   const categories = Object.keys(grouped).sort() as UnitCategory[]
+
+  const priceCount = product.priceCount ?? 0
+  const storeCount = product.storeCount ?? 0
 
   return (
     <>
@@ -240,49 +240,26 @@ export function ProductDetailDialog({
             <div className="min-w-0">
               <DialogTitle className="text-xl leading-tight">{product.name}</DialogTitle>
               <DialogDescription className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                {product.category && (
-                  <>
-                    <span>{product.category}</span>
-                  </>
-                )}
+                {product.brand && <span className="font-medium text-foreground">{product.brand}</span>}
+                {product.category && <><span>·</span><span>{product.category}</span></>}
+                {product.barcode && <><span>·</span><span className="font-mono text-[10px]">{product.barcode}</span></>}
                 <span>·</span>
-                <span>{product.storeCount} store{product.storeCount === 1 ? '' : 's'}</span>
+                <span>{storeCount} store{storeCount === 1 ? '' : 's'}</span>
                 <span>·</span>
-                <span>{product.priceCount} price{product.priceCount === 1 ? '' : 's'}</span>
+                <span>{priceCount} price{priceCount === 1 ? '' : 's'}</span>
               </DialogDescription>
             </div>
             <div className="flex flex-col gap-2 shrink-0">
-              {onAddToList && (
+              {onEditDetails && (
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={addingToList}
-                  onClick={async () => {
-                    setAddingToList(true)
-                    try {
-                      await onAddToList(product.id)
-                    } finally {
-                      setAddingToList(false)
-                    }
+                  onClick={() => {
+                    onEditDetails(product)
+                    onOpenChange(false)
                   }}
                 >
-                  {addingToList ? (
-                    <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <div className="relative inline-flex mr-1">
-                      <ShoppingCart
-                        className={`h-3.5 w-3.5 ${
-                          isOnList ? 'text-primary' : 'text-muted-foreground'
-                        }`}
-                      />
-                      {isOnList && (
-                        <span className="absolute -top-1.5 -right-1.5 h-3 w-3 rounded-full bg-primary flex items-center justify-center ring-1 ring-background">
-                          <Check className="h-2 w-2 text-primary-foreground" strokeWidth={4} />
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {isOnList ? 'On list' : 'Add to list'}
+                  <Pencil className="mr-1 h-3.5 w-3.5" /> Edit details
                 </Button>
               )}
               <Button
@@ -315,7 +292,7 @@ export function ProductDetailDialog({
             </TabsList>
 
             <TabsContent value="current" className="flex-1 overflow-y-auto scrollbar-thin -mx-1 px-1 space-y-5 mt-0">
-            {product.priceCount === 0 ? (
+            {priceCount === 0 ? (
               <div className="text-center py-10 text-sm text-muted-foreground">
                 <Package className="mx-auto mb-2 h-10 w-10 opacity-40" />
                 <p>No prices tracked yet.</p>
@@ -745,13 +722,13 @@ export function ProductDetailDialog({
 
           <div className="flex-1 overflow-hidden" />
 
-          {product.priceCount > 0 && (
+          {priceCount > 0 && (
             <>
               <Separator />
               <DialogFooter className="sm:justify-between items-center">
                 <p className="text-xs text-muted-foreground">
                   <StoreIcon className="inline h-3 w-3 mr-1" />
-                  Prices compared across {product.storeCount} store{product.storeCount === 1 ? '' : 's'}.
+                  Prices compared across {storeCount} store{storeCount === 1 ? '' : 's'}.
                 </p>
                 <Button
                   variant="outline"
@@ -773,7 +750,7 @@ export function ProductDetailDialog({
       <PriceFormDialog
         open={priceFormOpen}
         onOpenChange={setPriceFormOpen}
-        product={product}
+        context={{ mode: 'product', product }}
         stores={stores}
         initial={editingPrice}
         forkFrom={forkingPrice}

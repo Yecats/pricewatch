@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Loader2, Info, Tag, Globe, ScanLine } from 'lucide-react'
+import { Loader2, Info, Tag, Globe } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -16,7 +16,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useToast } from '@/hooks/use-toast'
 import { UNITS_BY_CATEGORY, UNIT_LABELS, computePrice, formatCurrency, formatPricePerUnitSmart, formatSaleCountdown, BASE_UNIT_LABEL } from '@/lib/units'
 import { localAddPrice, localUpdatePrice } from '@/hooks/use-local-data'
-import type { ComputedPrice, ProductGroup, Store } from './types'
+import type { ComputedPrice, ProductGroup, Product, Store } from './types'
 
 const schema = z.object({
   productId: z.string().min(1, 'Pick a product'),
@@ -33,10 +33,21 @@ const schema = z.object({
 })
 type FormValues = z.infer<typeof schema>
 
+/**
+ * The form can be opened in two contexts:
+ *  - `group`:   user is adding a price from inside a group detail dialog; show a product picker
+ *               so they can pick which product in the group the price applies to.
+ *  - `product`: user is adding a price from inside a product detail dialog; the product is fixed
+ *               and the picker is hidden.
+ */
+type Context =
+  | { mode: 'group'; group: ProductGroup }
+  | { mode: 'product'; product: Product }
+
 interface Props {
   open: boolean
   onOpenChange: (v: boolean) => void
-  group: ProductGroup
+  context: Context
   stores: Store[]
   initial?: ComputedPrice | null
   forkFrom?: ComputedPrice | null
@@ -60,12 +71,22 @@ function LabelWithHint({ children, hint }: { children: React.ReactNode; hint: st
   )
 }
 
-export function PriceFormDialog({ open, onOpenChange, group, stores, initial, forkFrom, onSaved }: Props) {
+export function PriceFormDialog({ open, onOpenChange, context, stores, initial, forkFrom, onSaved }: Props) {
   const { toast } = useToast()
   const [submitting, setSubmitting] = useState(false)
   const isEdit = !!initial
   const prefillSource = initial ?? forkFrom
   const today = new Date().toISOString().slice(0, 10)
+
+  // Resolve context-specific bits
+  const contextLabel = context.mode === 'group' ? context.group.name : context.product.name
+  const contextDescription = context.mode === 'group'
+    ? 'Pick which product in this group the price applies to.'
+    : `${context.product.brand ? context.product.brand + ' · ' : ''}add a new price entry for this product.`
+  const lockedProductId = context.mode === 'product' ? context.product.id : null
+  const pickableProducts = context.mode === 'group'
+    ? (context.group.products ?? []).map(p => ({ id: p.productId, name: p.name, brand: p.brand ?? null }))
+    : []
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -78,7 +99,7 @@ export function PriceFormDialog({ open, onOpenChange, group, stores, initial, fo
   useEffect(() => {
     if (open) {
       form.reset({
-        productId: prefillSource?.productId ?? '',
+        productId: prefillSource?.productId ?? lockedProductId ?? '',
         storeId: prefillSource?.storeId ?? '',
         price: prefillSource?.price ?? 0,
         quantity: prefillSource?.quantity ?? 1,
@@ -91,7 +112,7 @@ export function PriceFormDialog({ open, onOpenChange, group, stores, initial, fo
         isOnline: prefillSource?.isOnline ?? false,
       })
     }
-  }, [open, prefillSource, form, today])
+  }, [open, prefillSource, form, today, lockedProductId])
 
   const preview = computePrice({ price: Number(watched.price) || 0, quantity: Number(watched.quantity) || 0, sizeValue: Number(watched.sizeValue) || 0, sizeUnit: watched.sizeUnit || 'count' })
 
@@ -99,12 +120,14 @@ export function PriceFormDialog({ open, onOpenChange, group, stores, initial, fo
     setSubmitting(true)
     try {
       const saleExpiresAt = !values.isSale ? null : values.saleExpiresAt ? new Date(values.saleExpiresAt).toISOString() : new Date(new Date().setDate(new Date().getDate() + 1)).toISOString()
+      const productId = lockedProductId ?? values.productId
       if (isEdit && initial) {
         await localUpdatePrice(initial.id, { storeId: values.storeId, price: values.price, quantity: values.quantity, sizeValue: values.sizeValue, sizeUnit: values.sizeUnit, notes: values.notes || null, isSale: values.isSale, saleExpiresAt, isOnline: values.isOnline, dateChecked: values.dateChecked || new Date().toISOString() })
       } else {
-        await localAddPrice(values.productId, { storeId: values.storeId, price: values.price, quantity: values.quantity, sizeValue: values.sizeValue, sizeUnit: values.sizeUnit, notes: values.notes || null, isSale: values.isSale, saleExpiresAt, isOnline: values.isOnline, dateChecked: values.dateChecked || new Date().toISOString() })
+        await localAddPrice(productId, { storeId: values.storeId, price: values.price, quantity: values.quantity, sizeValue: values.sizeValue, sizeUnit: values.sizeUnit, notes: values.notes || null, isSale: values.isSale, saleExpiresAt, isOnline: values.isOnline, dateChecked: values.dateChecked || new Date().toISOString() })
       }
-      toast({ title: isEdit ? 'Price updated' : 'Price added', description: `${group.name} at ${stores.find(s => s.id === values.storeId)?.name ?? ''}` })
+      const storeName = stores.find(s => s.id === values.storeId)?.name ?? ''
+      toast({ title: isEdit ? 'Price updated' : 'Price added', description: `${contextLabel} at ${storeName}` })
       onSaved(); onOpenChange(false)
     } catch (e) {
       toast({ variant: 'destructive', title: 'Error', description: e instanceof Error ? e.message : 'Failed' })
@@ -120,23 +143,27 @@ export function PriceFormDialog({ open, onOpenChange, group, stores, initial, fo
           <DialogTitle className="flex items-center justify-between gap-2">
             <span>{isEdit ? 'Edit price' : forkFrom ? 'Copy price' : 'Add price entry'}</span>
           </DialogTitle>
-          <DialogDescription><span className="font-medium text-foreground">{group.name}</span> — enter the store and price details.</DialogDescription>
+          <DialogDescription>
+            <span className="font-medium text-foreground">{contextLabel}</span> — {contextDescription}
+          </DialogDescription>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {/* Product picker */}
-            <FormField control={form.control} name="productId" render={({ field }) => (
-              <FormItem>
-                <FormLabel>Product *</FormLabel>
-                <Select value={field.value} onValueChange={field.onChange}>
-                  <FormControl><SelectTrigger><SelectValue placeholder="Pick a product in this group" /></SelectTrigger></FormControl>
-                  <SelectContent>
-                    {(group.products ?? []).map(p => <SelectItem key={p.productId} value={p.productId}>{p.name}{p.brand ? ` · ${p.brand}` : ''}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )} />
+            {/* Product picker — only in group mode */}
+            {context.mode === 'group' && (
+              <FormField control={form.control} name="productId" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Product *</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl><SelectTrigger><SelectValue placeholder="Pick a product in this group" /></SelectTrigger></FormControl>
+                    <SelectContent>
+                      {pickableProducts.map(p => <SelectItem key={p.id} value={p.id}>{p.name}{p.brand ? ` · ${p.brand}` : ''}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            )}
 
             {/* Store */}
             <FormField control={form.control} name="storeId" render={({ field }) => (

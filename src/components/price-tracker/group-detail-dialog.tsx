@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react'
 import {
   Loader2, Plus, Pencil, Trash2, Trophy, Store as StoreIcon, Calendar,
   StickyNote, Package, Tag, Clock, Flame, ShoppingCart, Check, Globe,
-  Copy, History,
+  Copy, History, Layers,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -19,7 +20,7 @@ import {
   BASE_UNIT_LABEL, type UnitCategory,
 } from '@/lib/units'
 import { localDb } from '@/lib/local-db'
-import { localAddPrice, localDeletePrice, localAddProduct, localAddProductToGroup } from '@/hooks/use-local-data'
+import { localAddPrice, localDeletePrice, localAddProductToGroup } from '@/hooks/use-local-data'
 import type { ComputedPrice, ProductGroup, GroupProduct, Store } from './types'
 import { PriceFormDialog } from './price-form-dialog'
 
@@ -44,6 +45,11 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
   const [historyPrices, setHistoryPrices] = useState<ComputedPrice[]>([])
   const [reactivatingId, setReactivatingId] = useState<string | null>(null)
   const [currentGroup, setCurrentGroup] = useState<ProductGroup | null>(group)
+  const [addProductOpen, setAddProductOpen] = useState(false)
+  const [addProductQuery, setAddProductQuery] = useState('')
+  const [addableProducts, setAddableProducts] = useState<Array<{ id: string; name: string; brand?: string | null; category?: string | null; barcode?: string | null; groupCount: number }>>([])
+  const [pendingAddIds, setPendingAddIds] = useState<Set<string>>(new Set())
+  const [addingProducts, setAddingProducts] = useState(false)
 
   useEffect(() => { setCurrentGroup(group) }, [group])
 
@@ -55,8 +61,41 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
     if (!open) {
       setPriceFormOpen(false); setEditingPrice(null); setForkingPrice(null)
       setDeletingId(null); setActiveTab('current'); setHistoryPrices([])
+      setAddProductOpen(false); setAddProductQuery(''); setAddableProducts([]); setPendingAddIds(new Set())
     }
   }, [open])
+
+  // Load all products not in this group, for the "Add product" picker
+  useEffect(() => {
+    if (!open || !group) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const [allProducts, allLinks] = await Promise.all([
+          localDb.products.toArray(),
+          localDb.groupProducts.where('groupId').equals(group.id).toArray(),
+        ])
+        const inThisGroup = new Set(allLinks.map(l => l.productId))
+        // Count how many other groups each candidate product is already in, for context
+        const allOtherLinks = await localDb.groupProducts.toArray()
+        const groupCountByProduct = new Map<string, number>()
+        for (const l of allOtherLinks) {
+          if (l.groupId === group.id) continue
+          groupCountByProduct.set(l.productId, (groupCountByProduct.get(l.productId) ?? 0) + 1)
+        }
+        const candidates = allProducts
+          .filter(p => !p.deletedAt && !inThisGroup.has(p.id))
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map(p => ({
+            id: p.id, name: p.name, brand: p.brand ?? null,
+            category: p.category ?? null, barcode: p.barcode ?? null,
+            groupCount: groupCountByProduct.get(p.id) ?? 0,
+          }))
+        if (!cancelled) setAddableProducts(candidates)
+      } catch (err) { console.error('Failed to load addable products:', err) }
+    })()
+    return () => { cancelled = true }
+  }, [open, group])
 
   async function loadHistory() {
     if (!group) return
@@ -112,6 +151,22 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
     } finally { setReactivatingId(null) }
   }
 
+  async function addSelectedProductsToGroup() {
+    if (!currentGroup || pendingAddIds.size === 0) return
+    setAddingProducts(true)
+    try {
+      for (const pid of Array.from(pendingAddIds)) {
+        await localAddProductToGroup(currentGroup.id, pid)
+      }
+      toast({ title: 'Products added', description: `${pendingAddIds.size} product${pendingAddIds.size === 1 ? '' : 's'} added to ${currentGroup.name}` })
+      setPendingAddIds(new Set())
+      setAddProductOpen(false)
+      onPricesChanged()
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Error', description: e instanceof Error ? e.message : 'Failed' })
+    } finally { setAddingProducts(false) }
+  }
+
   if (!currentGroup) return null
 
   const products = currentGroup.products ?? []
@@ -146,6 +201,9 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
                   {isOnList ? 'On list' : 'Add to list'}
                 </Button>
               )}
+              <Button size="sm" variant="outline" onClick={() => setAddProductOpen(true)}>
+                <Layers className="mr-1 h-3.5 w-3.5" /> Add product
+              </Button>
               <Button size="sm" onClick={() => { setEditingPrice(null); setForkingPrice(null); setPriceFormOpen(true) }}>
                 <Plus className="mr-1 h-3.5 w-3.5" /> Add price
               </Button>
@@ -288,12 +346,65 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
       <PriceFormDialog
         open={priceFormOpen}
         onOpenChange={setPriceFormOpen}
-        group={currentGroup}
+        context={{ mode: 'group', group: currentGroup }}
         stores={stores}
         initial={editingPrice}
         forkFrom={forkingPrice}
         onSaved={() => { onPricesChanged(); void loadHistory() }}
       />
+
+      {/* Add existing products to this group */}
+      <Dialog open={addProductOpen} onOpenChange={setAddProductOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Layers className="h-5 w-5 text-primary" />Add products to {currentGroup.name}</DialogTitle>
+            <DialogDescription>Pick existing products from your catalog to compare inside this group.</DialogDescription>
+          </DialogHeader>
+          <Input value={addProductQuery} onChange={e => setAddProductQuery(e.target.value)} placeholder="Search products..." className="mb-2" />
+          <div className="max-h-72 overflow-y-auto scrollbar-thin rounded-lg border divide-y">
+            {addableProducts.length === 0 ? (
+              <div className="p-4 text-center text-xs text-muted-foreground">No more products to add. Create new ones from the Products tab.</div>
+            ) : (
+              (() => {
+                const q = addProductQuery.trim().toLowerCase()
+                const filtered = q
+                  ? addableProducts.filter(p => [p.name, p.brand, p.category, p.barcode].filter(Boolean).join(' ').toLowerCase().includes(q))
+                  : addableProducts
+                if (filtered.length === 0) return <div className="p-4 text-center text-xs text-muted-foreground">No matches for "{addProductQuery}".</div>
+                return filtered.map(p => (
+                  <button key={p.id} type="button"
+                    onClick={() => setPendingAddIds(prev => {
+                      const next = new Set(prev)
+                      if (next.has(p.id)) next.delete(p.id)
+                      else next.add(p.id)
+                      return next
+                    })}
+                    className={`w-full text-left px-3 py-2 flex items-center gap-2 transition-colors ${pendingAddIds.has(p.id) ? 'bg-primary/5' : 'hover:bg-accent'}`}>
+                    <div className={`h-4 w-4 rounded border flex items-center justify-center shrink-0 ${pendingAddIds.has(p.id) ? 'bg-primary border-primary' : 'border-input'}`}>
+                      {pendingAddIds.has(p.id) && <Check className="h-3 w-3 text-primary-foreground" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium truncate">{p.name}</div>
+                      <div className="text-[10px] text-muted-foreground truncate">
+                        {p.brand ? `${p.brand} · ` : ''}{p.category ?? 'No category'}
+                        {p.groupCount > 0 ? ` · in ${p.groupCount} other group${p.groupCount === 1 ? '' : 's'}` : ''}
+                      </div>
+                    </div>
+                  </button>
+                ))
+              })()
+            )}
+          </div>
+          <DialogFooter>
+            <div className="text-xs text-muted-foreground mr-auto">{pendingAddIds.size} selected</div>
+            <Button type="button" variant="ghost" onClick={() => { setAddProductOpen(false); setPendingAddIds(new Set()) }} disabled={addingProducts}>Cancel</Button>
+            <Button type="button" disabled={pendingAddIds.size === 0 || addingProducts} onClick={addSelectedProductsToGroup}>
+              {addingProducts && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Add {pendingAddIds.size > 0 ? `(${pendingAddIds.size})` : ''}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
