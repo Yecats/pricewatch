@@ -31,9 +31,12 @@ interface Props {
   /** Pre-selected product IDs — typically used when "Create group from selected" is clicked on the Products tab. */
   initialProductIds?: string[]
   onSaved: () => void
+  /** Called with the newly created group's ID after a successful save.
+   *  If provided, parent can auto-open the group detail dialog. */
+  onCreated?: (groupId: string) => void
 }
 
-export function GroupFormDialog({ open, onOpenChange, products, initialProductIds = [], onSaved }: Props) {
+export function GroupFormDialog({ open, onOpenChange, products, initialProductIds = [], onSaved, onCreated }: Props) {
   const { toast } = useToast()
   const [submitting, setSubmitting] = useState(false)
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(new Set())
@@ -53,7 +56,7 @@ export function GroupFormDialog({ open, onOpenChange, products, initialProductId
   async function onSubmit(values: FormValues) {
     setSubmitting(true)
     try {
-      await localAddGroup({
+      const groupId = await localAddGroup({
         name: values.name,
         category: values.category || null,
         notes: values.notes || null,
@@ -62,6 +65,7 @@ export function GroupFormDialog({ open, onOpenChange, products, initialProductId
       toast({ title: 'Group created', description: values.name })
       onSaved()
       onOpenChange(false)
+      if (onCreated) onCreated(groupId)
     } catch (e) {
       toast({ variant: 'destructive', title: 'Error', description: e instanceof Error ? e.message : 'Failed' })
     } finally {

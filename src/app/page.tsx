@@ -118,6 +118,11 @@ export default function Home() {
     }
   }, [products])
 
+  // Keep a ref to the latest groups so the GroupFormDialog onCreated
+  // callback can find the newly created group without re-creating the callback.
+  const groupsRef = useRef<ProductGroup[]>([])
+  useEffect(() => { groupsRef.current = groups })
+
   const categories = useMemo(() => {
     const set = new Set<string>()
     const source = activeTab === 'groups' ? groups : products
@@ -512,6 +517,33 @@ export default function Home() {
         products={products}
         initialProductIds={groupFormInitialProductIds}
         onSaved={() => { void reloadGroups(); void reloadProducts() }}
+        onCreated={(groupId) => {
+          // Switch to Groups tab and open the newly created group.
+          void (async () => {
+            setActiveTab('groups')
+            await reloadGroups()
+            const newGroup = (await localDb.productGroups.get(groupId))
+            if (newGroup) {
+              // Find the fully-loaded group from state (with products + prices).
+              // Use a small delay to ensure reloadGroups has settled.
+              setTimeout(() => {
+                const g = groupsRef.current.find(g => g.id === groupId)
+                if (g) setSelectedGroup(g)
+                else {
+                  // Fallback: construct a minimal ProductGroup — reloadGroups will refresh.
+                  setSelectedGroup({
+                    id: newGroup.id, name: newGroup.name,
+                    category: newGroup.category ?? null,
+                    notes: newGroup.notes ?? null,
+                    createdAt: newGroup.createdAt, updatedAt: newGroup.updatedAt,
+                    products: [], bestPrice: null, lowestPricePerUnit: null,
+                    storeCount: 0, productCount: 0, priceCount: 0,
+                  })
+                }
+              }, 100)
+            }
+          })()
+        }}
       />
       <GroupDetailDialog open={!!selectedGroup} onOpenChange={(v) => { if (!v) setSelectedGroup(null) }}
         group={selectedGroup} stores={stores} onPricesChanged={() => { void reloadGroups(); void reloadProducts() }}
