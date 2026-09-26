@@ -128,12 +128,10 @@ export function BarcodeScannerDialog({
       try {
         const result = await lookupBarcode(code)
         if (!result) {
-          toast({
-            variant: 'destructive',
-            title: 'Barcode not found',
-            description: `No product found for ${code}. You can enter the details manually.`,
-          })
-          // Still pass the barcode to the form so it can be saved
+          // Barcode not found in OpenFoodFacts — pass it through silently.
+          // The parent (handleGlobalScan) will search for similar groups by name,
+          // and if the name is empty it'll just create a new product.
+          // No need for a scary "not found" toast.
           onDetected({
             barcode: code,
             name: '',
