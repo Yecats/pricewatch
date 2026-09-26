@@ -234,8 +234,8 @@ export function ProductDetailDialog({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader className="flex-row items-start justify-between gap-3 space-y-0">
-            <div className="min-w-0">
+          <DialogHeader className="space-y-0">
+            <div className="min-w-0 pr-8">
               <DialogTitle className="text-xl leading-tight">{product.name}</DialogTitle>
               <DialogDescription className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                 {product.brand && <span className="font-medium text-foreground">{product.brand}</span>}
@@ -247,15 +247,13 @@ export function ProductDetailDialog({
                 <span>{priceCount} price{priceCount === 1 ? '' : 's'}</span>
               </DialogDescription>
             </div>
-            <div className="flex flex-col gap-2 shrink-0">
+            {/* Action buttons in a single horizontal row (with wrap on small screens) */}
+            <div className="flex flex-wrap items-center gap-2 pt-2">
               {onEditDetails && (
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    onEditDetails(product)
-                    onOpenChange(false)
-                  }}
+                  onClick={() => onEditDetails(product)}
                 >
                   <Pencil className="mr-1 h-3.5 w-3.5" /> Edit details
                 </Button>
@@ -723,22 +721,11 @@ export function ProductDetailDialog({
           {priceCount > 0 && (
             <>
               <Separator />
-              <DialogFooter className="sm:justify-between items-center">
+              <DialogFooter className="sm:justify-start items-center">
                 <p className="text-xs text-muted-foreground">
                   <StoreIcon className="inline h-3 w-3 mr-1" />
                   Prices compared across {storeCount} store{storeCount === 1 ? '' : 's'}.
                 </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setEditingPrice(null)
-                    setForkingPrice(null)
-                    setPriceFormOpen(true)
-                  }}
-                >
-                  <Plus className="mr-1 h-3.5 w-3.5" /> Add price
-                </Button>
               </DialogFooter>
             </>
           )}

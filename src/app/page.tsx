@@ -123,6 +123,24 @@ export default function Home() {
   const groupsRef = useRef<ProductGroup[]>([])
   useEffect(() => { groupsRef.current = groups })
 
+  // After groups reload (e.g. after deleting a price in GroupDetailDialog),
+  // refresh the open GroupDetailDialog so it shows updated data.
+  // Without this, selectedGroup stays pointing at the old object captured
+  // when the dialog was opened, so deletes/edits don't visually update.
+  const selectedGroupRef = useRef<ProductGroup | null>(null)
+  useEffect(() => {
+    selectedGroupRef.current = selectedGroup
+  })
+  useEffect(() => {
+    const sg = selectedGroupRef.current
+    if (sg) {
+      const updated = groups.find(g => g.id === sg.id)
+      if (updated && updated !== sg) {
+        setSelectedGroup(updated)
+      }
+    }
+  }, [groups])
+
   const categories = useMemo(() => {
     const set = new Set<string>()
     const source = activeTab === 'groups' ? groups : products
@@ -628,11 +646,29 @@ function GroupCard({ group, onOpen, onEdit, onDelete, onAddToList, isOnList }: {
     <Card className="group relative overflow-hidden p-4 cursor-pointer hover:shadow-md hover:border-primary/40 transition-all" onClick={onOpen}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold leading-tight truncate">{group.name}</h3>
+          <h3 className="font-semibold leading-tight truncate pr-1">{group.name}</h3>
           {group.category && <p className="text-xs text-muted-foreground mt-0.5 truncate">{group.category}</p>}
         </div>
-        <div className="flex opacity-0 group-hover:opacity-100 transition-opacity gap-0.5 -mr-1 -mt-1">
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); onDelete() }} aria-label="Delete"><Trash2 className="h-3.5 w-3.5" /></Button>
+        {/* Both hover actions in one row so they don't overlap each other */}
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity -mr-1 -mt-0.5 shrink-0">
+          {onAddToList && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 relative"
+              onClick={(e) => { e.stopPropagation(); onAddToList(group.id) }}
+              aria-label={isOnList ? 'Remove from shopping list' : 'Add to shopping list'}
+              title={isOnList ? 'Remove from shopping list' : 'Add to shopping list'}
+            >
+              <ShoppingCart className={`h-3.5 w-3.5 ${isOnList ? 'text-primary' : 'text-muted-foreground'}`} />
+              {isOnList && (
+                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-primary flex items-center justify-center ring-1 ring-background">
+                  <Check className="h-1.5 w-1.5 text-primary-foreground" strokeWidth={4} />
+                </span>
+              )}
+            </Button>
+          )}
+          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={(e) => { e.stopPropagation(); onDelete() }} aria-label="Delete"><Trash2 className="h-3.5 w-3.5" /></Button>
         </div>
       </div>
       {group.priceCount === 0 ? (
@@ -661,17 +697,6 @@ function GroupCard({ group, onOpen, onEdit, onDelete, onAddToList, isOnList }: {
             <span className="inline-flex items-center gap-1"><StoreIcon className="h-3 w-3" />{group.storeCount} store{group.storeCount === 1 ? '' : 's'}</span>
           </div>
         </>
-      )}
-      {onAddToList && (
-        <button type="button" onClick={(e) => { e.stopPropagation(); onAddToList(group.id) }}
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 rounded-full grid place-items-center hover:bg-accent"
-          aria-label={isOnList ? 'Remove from shopping list' : 'Add to shopping list'}
-          title={isOnList ? 'Remove from shopping list' : 'Add to shopping list'}>
-          <div className="relative inline-flex">
-            <ShoppingCart className={`h-3.5 w-3.5 ${isOnList ? 'text-primary' : 'text-muted-foreground'}`} />
-            {isOnList && <span className="absolute -top-1.5 -right-1.5 h-3 w-3 rounded-full bg-primary flex items-center justify-center ring-1 ring-background"><Check className="h-2 w-2 text-primary-foreground" strokeWidth={4} /></span>}
-          </div>
-        </button>
       )}
     </Card>
   )

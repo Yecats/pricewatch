@@ -201,18 +201,22 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader className="flex-row items-start justify-between gap-3 space-y-0">
-            <div className="min-w-0">
-              <DialogTitle className="text-xl leading-tight">{currentGroup.name}</DialogTitle>
-              <DialogDescription className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                {currentGroup.category && <span>{currentGroup.category}</span>}
-                <span>·</span>
-                <span>{products.length} product{products.length === 1 ? '' : 's'}</span>
-                <span>·</span>
-                <span>{allPrices.length} price{allPrices.length === 1 ? '' : 's'}</span>
-              </DialogDescription>
+          <DialogHeader className="space-y-0">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1 pr-8">
+                <DialogTitle className="text-xl leading-tight">{currentGroup.name}</DialogTitle>
+                <DialogDescription className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                  {currentGroup.category && <span>{currentGroup.category}</span>}
+                  <span>·</span>
+                  <span>{products.length} product{products.length === 1 ? '' : 's'}</span>
+                  <span>·</span>
+                  <span>{allPrices.length} price{allPrices.length === 1 ? '' : 's'}</span>
+                </DialogDescription>
+              </div>
             </div>
-            <div className="flex flex-col gap-2 shrink-0">
+            {/* Action buttons in a single horizontal row (with wrap on small screens).
+                pr-8 on the title reserves space for the absolute-positioned X close button. */}
+            <div className="flex flex-wrap items-center gap-2 pt-2">
               {onAddToList && (
                 <Button size="sm" variant="outline" disabled={addingToList}
                   onClick={async () => { setAddingToList(true); try { await onAddToList(currentGroup.id) } finally { setAddingToList(false) } }}>
@@ -411,11 +415,8 @@ export function GroupDetailDialog({ open, onOpenChange, group, stores, onPricesC
           {allPrices.length > 0 && (
             <>
               <Separator />
-              <DialogFooter className="sm:justify-between items-center">
+              <DialogFooter className="sm:justify-start items-center">
                 <p className="text-xs text-muted-foreground"><StoreIcon className="inline h-3 w-3 mr-1" />Prices compared across {currentGroup.storeCount} store{currentGroup.storeCount === 1 ? '' : 's'}.</p>
-                <Button variant="outline" size="sm" onClick={() => { setEditingPrice(null); setForkingPrice(null); setPriceFormOpen(true) }}>
-                  <Plus className="mr-1 h-3.5 w-3.5" /> Add price
-                </Button>
               </DialogFooter>
             </>
           )}
