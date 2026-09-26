@@ -102,6 +102,9 @@ class LocalDB extends Dexie {
   constructor() {
     super('pricewatch')
 
+    // version 3: 3-layer model (Groups → Products → Prices)
+    // When the schema version changes, Dexie automatically handles the upgrade.
+    // For a major schema change (like v1→v3), we delete and recreate all tables.
     this.version(3).stores({
       stores: 'id, name, updatedAt, deletedAt, _pendingSync',
       productGroups: 'id, name, category, updatedAt, deletedAt, _pendingSync',
@@ -110,6 +113,32 @@ class LocalDB extends Dexie {
       priceEntries: 'id, productId, storeId, updatedAt, deletedAt, _pendingSync',
       shoppingListItems: 'id, groupId, purchased, updatedAt, deletedAt, _pendingSync',
       syncMeta: 'key',
+    })
+
+    // Auto-migration: if upgrading from v1/v2 to v3, wipe old data.
+    // The sync will re-pull everything from the server.
+    this.version(3).upgrade(async (tx) => {
+      // Check if old tables exist (from v1/v2 schema)
+      const oldProductTable = tx.table('products')
+      if (oldProductTable) {
+        // Check if the old schema had 'brand' on products (v2 model)
+        // by checking if productGroups table exists
+        try {
+          const hasGroupTables = await tx.table('productGroups').count()
+          if (!hasGroupTables) {
+            // Old schema — wipe everything so sync can re-pull cleanly
+            await Promise.all([
+              tx.table('stores').clear(),
+              tx.table('products').clear(),
+              tx.table('priceEntries').clear(),
+              tx.table('shoppingListItems').clear(),
+              tx.table('syncMeta').clear(),
+            ])
+          }
+        } catch {
+          // productGroups table doesn't exist yet — this is fine, it's a fresh DB
+        }
+      }
     })
   }
 }
