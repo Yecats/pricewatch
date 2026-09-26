@@ -67,7 +67,7 @@ export default function Home() {
   const [globalScannerOpen, setGlobalScannerOpen] = useState(false)
   const [pendingLookup, setPendingLookup] = useState<BarcodeLookupResult | null>(null)
   const [variantPickerOpen, setVariantPickerOpen] = useState(false)
-  const [variantMatches, setVariantMatches] = useState<Array<{ id: string; name: string; brand?: string | null; category?: string | null; priceCount: number }>>([])
+  const [variantMatches, setVariantMatches] = useState<Array<{ id: string; name: string; category?: string | null; priceCount: number; score: number }>>([])
   const [shoppingListOpen, setShoppingListOpen] = useState(false)
   const [shoppingListCount, setShoppingListCount] = useState(0)
   const [onListIds, setOnListIds] = useState<Set<string>>(new Set())
@@ -412,7 +412,7 @@ export default function Home() {
         .slice(0, 5)
 
       if (matches.length > 0) {
-        // Show the variant picker — let the user decide
+        // Show the variant picker with a recommended group (best match first)
         const matchData = await Promise.all(
           matches.map(async (m) => {
             const priceCount = await localDb.priceEntries
@@ -425,6 +425,7 @@ export default function Home() {
               name: m.product.name,
               category: m.product.category,
               priceCount,
+              score: m.score,
             }
           })
         )
